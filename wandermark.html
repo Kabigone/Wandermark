@@ -338,7 +338,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.7.2";
+var WANDERMARK_VERSION="0.7.3";
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -802,7 +802,7 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
   driveListFolder(fid,key,function(files,err){
     if(err||!files){ var msg=driveErrText(err); if(!opts.silent){ toast("Drive sync failed: "+msg); } try{ console.error("Wandermark Drive sync error:",err); }catch(e){} return; }
     var jsons=files.filter(function(f){ return /\.json$/i.test(f.name); });
-    if(!jsons.length){ if(!opts.silent) toast("No .json maps found in that Drive folder"); if(opts.then) opts.then(); return; }
+    if(!jsons.length){ if(!opts.silent) toast("Connected ✓ — but this folder has no map files yet. Export a map (⋯ → Export this map JSON) and drop it in the folder, then sync again."); if(opts.then) opts.then(); return; }
     var i=0,added=0,updated=0,seen={};
     (function next(){
       if(i>=jsons.length){
