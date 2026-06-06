@@ -2,10 +2,14 @@
   Wandermark — personal, shareable travel maps in a single HTML file.
   Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
 
-  VERSION: 0.7.0
+  VERSION: 0.7.1
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.7.1  Drive sync now reports the actual Google error (API not enabled,
+           bad key, folder not shared, referrer-blocked) instead of a generic
+           message; warns if the OAuth Client ID is pasted where the API key
+           goes.
     0.7.0  "Quick filters" auto-derived from opening hours (open now/today,
            breakfast, weekday lunch, dinner, open late, open weekends) — no
            manual tagging. Category editor: rename/recolor/re-icon, and MERGE
@@ -334,7 +338,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.7.0";
+var WANDERMARK_VERSION="0.7.1";
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -769,6 +773,23 @@ function mapsModal(){ var personal=[],curated=[],synced=[];
 
 /* ----- Google Drive sync (read-only, no sign-in) ----- */
 function driveExtractId(s){ s=(s||"").trim(); var m=s.match(/\/folders\/([A-Za-z0-9_\-]+)/); if(m) return m[1]; m=s.match(/[?&]id=([A-Za-z0-9_\-]+)/); if(m) return m[1]; m=s.match(/\/d\/([A-Za-z0-9_\-]+)/); if(m) return m[1]; return s; }
+function driveErrText(err){
+  if(!err) return "no response (check your connection)";
+  var m=(err&&err.message)?err.message:(typeof err==="string"?err:"");
+  var reason=(err&&err.errors&&err.errors[0]&&err.errors[0].reason)||(err&&err.status)||"";
+  var low=(m+" "+reason).toLowerCase();
+  if(low.indexOf("has not been used")>=0 || low.indexOf("disabled")>=0 || low.indexOf("accessnotconfigured")>=0)
+    return "the Drive API isn’t enabled on this key’s project — enable “Google Drive API” in Google Cloud Console.";
+  if(low.indexOf("api key not valid")>=0 || low.indexOf("api_key_invalid")>=0 || low.indexOf("bad request")>=0)
+    return "that key looks invalid. Make sure it’s an API key (starts with “AIza…”), not the OAuth Client ID (…apps.googleusercontent.com).";
+  if(low.indexOf("referer")>=0 || low.indexOf("referrer")>=0 || low.indexOf("requests-from-referer")>=0 || low.indexOf("api_key_http_referrer_blocked")>=0)
+    return "the key is restricted by website — add https://kabigone.github.io to the key’s allowed referrers (or remove the restriction).";
+  if(low.indexOf("permission")>=0 || low.indexOf("not found")>=0 || low.indexOf("insufficient")>=0)
+    return "the folder isn’t readable — share it “Anyone with the link → Viewer”, and double-check the folder link/ID.";
+  if(low.indexOf("failed to fetch")>=0 || low.indexOf("networkerror")>=0)
+    return "the request was blocked (network, ad-blocker, or a key website-restriction). Try without restrictions first.";
+  return m||"unknown error (see the browser console for details).";
+}
 function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId+"' in parents and trashed=false");
   var url="https://www.googleapis.com/drive/v3/files?q="+q+"&key="+encodeURIComponent(key)+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
   fetch(url).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
@@ -777,7 +798,7 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (⋯ → Sync with Google Drive)"); return; }
   if(!opts.silent) toast("Syncing maps from Drive…");
   driveListFolder(fid,key,function(files,err){
-    if(err||!files){ if(!opts.silent) toast("Drive sync failed — folder must be shared “Anyone with the link”, and the key needs Drive API enabled."); return; }
+    if(err||!files){ var msg=driveErrText(err); if(!opts.silent){ toast("Drive sync failed: "+msg); } try{ console.error("Wandermark Drive sync error:",err); }catch(e){} return; }
     var jsons=files.filter(function(f){ return /\.json$/i.test(f.name); });
     if(!jsons.length){ if(!opts.silent) toast("No .json maps found in that Drive folder"); if(opts.then) opts.then(); return; }
     var i=0,added=0,updated=0,seen={};
@@ -805,11 +826,13 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",auto:false};
     '<div class="divlbl"><span class="ln"></span>How it works<span class="ln"></span></div>'+
     '<ol class="steps"><li>Put your map files (the JSON you get from <b>Export this map</b> or the scraper) into one Drive folder.</li>'+
     '<li>Share that folder: <b>Anyone with the link → Viewer</b>.</li>'+
-    '<li>Paste the folder link above, plus a Google API key with the <b>Drive API</b> enabled (can be the same project as your Maps key, but enable Drive API on it).</li>'+
+    '<li>Paste the folder link above, plus an <b>API key</b> (starts “AIza…”, <b>not</b> the OAuth Client ID that ends in apps.googleusercontent.com) that has the <b>Drive API</b> enabled. It can be the same Cloud project as your Maps key — just enable “Google Drive API” there too.</li>'+
     '<li>Wandermark lists the folder and loads every <b>.json</b> as a map under “☁️ Shared from Drive”, refreshing them on each sync.</li></ol>'+
     '<div class="note-box">This is <b>read-only</b>: friends always see your latest folder automatically, and changing a file in Drive updates everyone on their next sync. Saving edits <i>back</i> to Drive from the browser would need Google sign-in and a hosted copy of the app — ask if you want that. Synced maps are read-only here; use “Copy to my maps” to edit a local version.<br><br>If sync fails when opening the file locally, the key may be restricted by website — use an unrestricted key (or host the app).</div></div>');
   modal.querySelector(".close").onclick=closeModal;
-  modal.querySelector("#dSync").onclick=function(){ appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:modal.querySelector("#dKey").value.trim(),auto:modal.querySelector("#dAuto").checked}; save();
+  modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim();
+    if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("That’s the OAuth Client ID. Sync needs an API key (starts “AIza…”) with the Drive API enabled."); return; }
+    appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:keyVal,auto:modal.querySelector("#dAuto").checked}; save();
     if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and a key"); return; } closeModal(); syncDrive({}); };
   var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",key:"",auto:false}; save(); closeModal(); toast("Drive disconnected (synced maps kept)"); }; }
 
