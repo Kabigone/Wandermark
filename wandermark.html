@@ -338,7 +338,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.7.1";
+var WANDERMARK_VERSION="0.7.2";
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -784,6 +784,8 @@ function driveErrText(err){
     return "that key looks invalid. Make sure it’s an API key (starts with “AIza…”), not the OAuth Client ID (…apps.googleusercontent.com).";
   if(low.indexOf("referer")>=0 || low.indexOf("referrer")>=0 || low.indexOf("requests-from-referer")>=0 || low.indexOf("api_key_http_referrer_blocked")>=0)
     return "the key is restricted by website — add https://kabigone.github.io to the key’s allowed referrers (or remove the restriction).";
+  if(low.indexOf("are blocked")>=0 || low.indexOf("service_blocked")>=0 || (low.indexOf("blocked")>=0 && low.indexOf("method")>=0))
+    return "this API key doesn’t allow the Drive API. In the key’s settings → “API restrictions”, add “Google Drive API” to the allowed list (or choose “Don’t restrict key”).";
   if(low.indexOf("permission")>=0 || low.indexOf("not found")>=0 || low.indexOf("insufficient")>=0)
     return "the folder isn’t readable — share it “Anyone with the link → Viewer”, and double-check the folder link/ID.";
   if(low.indexOf("failed to fetch")>=0 || low.indexOf("networkerror")>=0)
