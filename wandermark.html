@@ -1,0 +1,1021 @@
+<!--
+  Wandermark — personal, shareable travel maps in a single HTML file.
+  Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
+
+  VERSION: 0.7.0
+  Full history is in CHANGELOG.md; how the code is organised is in README.md.
+
+  Changelog (summary):
+    0.7.0  "Quick filters" auto-derived from opening hours (open now/today,
+           breakfast, weekday lunch, dinner, open late, open weekends) — no
+           manual tagging. Category editor: rename/recolor/re-icon, and MERGE
+           one category into another (handy for messy imported maps).
+    0.6.0  Per-place tags + a tag filter (match all/any) — the basis for custom
+           filters like "breakfast", "テラス席", "weekday lunch"; Tags column in
+           the table; tags in CSV/JSON. Mobile perf: lazy popups, debounced
+           filter typing.
+    0.5.0  Google Drive folder read-sync (auto-builds a map directory from a
+           shared folder, no sign-in); in-app version tag; developer docs.
+    0.4.0  Multiple maps (a library, one per city/trip) with a switcher;
+           Google My Maps KML/KMZ import; full-week table + horizontal scroll;
+           category All/None; "reset all filters".
+    0.3.0  Google Maps engine; place photos; structured opening-hours grid;
+           display-language switcher; collapsible filters; distance anchors
+           (my location / typed address); popup & table fixes.
+    0.2.0  Durable storage (window.storage -> localStorage fallback); share codes.
+    0.1.0  First version: keyless map, search-to-add, categories, table view,
+           JSON/CSV import & export.
+-->
+<!-- Wandermark — personal travel maps. Single file. OpenStreetMap (keyless) or Google Maps (your API key). -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Wandermark</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#f3ecdc; --paper-2:#ece2cd; --card:#fbf7ec; --ink:#23241d; --ink-soft:#4b4a3d;
+    --muted:#7c7866; --line:#ddd2b8; --line-2:#cabf9f;
+    --stamp:#c0432b; --stamp-ink:#a5371f; --teal:#2c726c; --teal-ink:#1f5650;
+    --open:#2f6a3a; --closed:#9a3322; --shadow:0 1px 2px rgba(60,50,20,.06), 0 8px 24px rgba(60,50,20,.10);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:"Hanken Grotesk",system-ui,sans-serif;color:var(--ink);background:var(--paper);
+    background-image:radial-gradient(circle at 18% 12%, rgba(192,67,43,.05), transparent 45%),radial-gradient(circle at 86% 80%, rgba(44,114,108,.06), transparent 45%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
+    overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:8px;border:2px solid var(--paper)}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  #app{display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:12px;padding:11px 18px;background:linear-gradient(180deg,#fbf7ec,#f5eedd);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 6px 16px rgba(60,50,20,.05);z-index:600}
+  .brand{display:flex;align-items:baseline;gap:9px;user-select:none}
+  .brand .glyph{font-size:22px;transform:translateY(2px)}
+  .brand h1{font-family:"Fraunces",serif;font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0;line-height:1}
+  #mapBtn{font-weight:700;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .search-wrap{position:relative;flex:1;max-width:480px}
+  .search-wrap input{width:100%;padding:10px 14px 10px 38px;border-radius:11px;border:1px solid var(--line-2);background:#fffdf6;outline:none;transition:.15s}
+  .search-wrap input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(44,114,108,.13)}
+  .search-wrap .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5;font-size:15px}
+  .results{position:absolute;top:46px;left:0;right:0;background:var(--card);border:1px solid var(--line-2);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;z-index:700;display:none;max-height:360px;overflow-y:auto}
+  .results.on{display:block}
+  .res{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+  .res:last-child{border-bottom:none}
+  .res:hover{background:#f1e9d4}
+  .res .rt{font-size:18px;line-height:1.2}
+  .res .rn{font-weight:600;font-size:14px}
+  .res .ra{font-size:12px;color:var(--muted);margin-top:1px}
+  .res .badge{margin-left:auto;font-size:11px;color:var(--teal-ink);background:rgba(44,114,108,.12);padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:600}
+  .res.note{color:var(--muted);font-size:13px;cursor:default}
+  .res.note:hover{background:none}
+
+  .hbtns{display:flex;gap:8px;margin-left:auto;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border-radius:10px;font-weight:600;font-size:13px;border:1px solid var(--line-2);background:#fffdf6;transition:.13s;white-space:nowrap}
+  .btn:hover{background:#f3ebd6;transform:translateY(-1px)}
+  .btn.solid{background:var(--ink);color:#f6f1e3;border-color:var(--ink)}
+  .btn.solid:hover{background:#34352b}
+  .btn.tab{background:transparent;border-color:transparent}
+  .btn.tab.active{background:var(--stamp);color:#fdf3ee;border-color:var(--stamp-ink);box-shadow:0 2px 6px rgba(192,67,43,.25)}
+  .btn.eng{font-weight:700}
+  .btn.eng.on{background:rgba(76,154,90,.15);border-color:#4c9a5a;color:#2f6a3a}
+  .seg{display:flex;background:#efe6d0;border:1px solid var(--line-2);border-radius:11px;padding:3px}
+
+  main{flex:1;display:flex;min-height:0;position:relative}
+  aside{width:344px;flex:none;background:linear-gradient(180deg,#fbf7ec,#f7f0e0);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;z-index:500}
+  .pane{overflow-y:auto;padding:16px;flex:1}
+  .sec{margin-bottom:20px}
+  .sec h3{font-family:"Fraunces",serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .sec h3 .ln{flex:1;height:1px;background:var(--line)}
+  .sec h3.toggler{cursor:pointer;user-select:none}
+  .sec h3 .caret{transition:.2s;font-size:11px}
+  .sec.collapsed h3 .caret{transform:rotate(-90deg)}
+  .sec.collapsed .sec-body{display:none}
+  .sec h3 .fbadge{background:var(--stamp);color:#fff;border-radius:20px;font-size:10px;padding:1px 7px;font-weight:700;letter-spacing:0}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;font-weight:600}
+  .field input,.field select{width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line-2);background:#fffdf6;outline:none}
+  .field input:focus,.field select:focus{border-color:var(--teal)}
+  .row2{display:flex;gap:8px}
+  .checkrow{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;margin-bottom:10px}
+  .checkrow input{width:auto}
+  .ghostbtn{font-size:12px;color:var(--teal-ink);font-weight:700;padding:3px 6px;border-radius:7px}
+  .ghostbtn:hover{background:rgba(44,114,108,.1)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;font-size:12.5px;font-weight:600;border:1.5px solid var(--line-2);background:#fffdf6;transition:.12s;user-select:none}
+  .chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .chip .ct{opacity:.55}
+  .chip.off{opacity:.4;filter:grayscale(.5)}
+  .chip:hover{transform:translateY(-1px)}
+  .catrow{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px}
+  .catrow .em{font-size:17px;width:24px;text-align:center}
+  .catrow .x{font-size:13px;color:var(--muted);padding:2px 6px;border-radius:6px}
+  .catrow .x:hover{background:rgba(192,67,43,.15);color:var(--stamp-ink)}
+
+  .place{display:flex;gap:10px;padding:9px;border-radius:11px;cursor:pointer;border:1px solid transparent}
+  .place:hover{background:#f1e9d4;border-color:var(--line)}
+  .place .pem{position:relative;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:16px;flex:none;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);background-size:cover;background-position:center}
+  .place .pem.photo{color:transparent}
+  .place .pem .badge2{position:absolute;right:-4px;bottom:-4px;width:17px;height:17px;border-radius:50%;font-size:9px;display:grid;place-items:center;box-shadow:0 0 0 1.5px #fff;color:#fff}
+  .place .pn{font-weight:600;font-size:13.5px;line-height:1.25}
+  .place .pmeta{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+  .place .pmeta .cdot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .place .pmeta .km{color:var(--teal-ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .place .pmeta .open{color:var(--open);font-weight:700}
+  .place .pmeta .closed{color:var(--closed);font-weight:700}
+  .empty{text-align:center;color:var(--muted);font-style:italic;font-family:"Fraunces",serif;padding:26px 10px;font-size:14px}
+  .miniadd{width:100%;justify-content:center;border-style:dashed;color:var(--muted)}
+
+  #map{flex:1;background:#dfe6d8;z-index:1}
+  .mk-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--c,#888);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 3px 5px rgba(0,0,0,.35);border:2px solid #fff}
+  .mk-pin span{transform:rotate(45deg);font-size:14px;line-height:1}
+  .mk-ref{width:18px;height:18px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 3px rgba(44,114,108,.4),0 2px 5px rgba(0,0,0,.3)}
+  .leaflet-popup-content-wrapper{border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
+  .leaflet-popup-content{margin:13px 14px;font-family:"Hanken Grotesk",sans-serif}
+  .pop{width:252px}
+  .pop-photo img{width:100%;height:118px;object-fit:cover;border-radius:9px;margin-bottom:8px;display:block;background:#e7dcc4}
+  .pop h4{font-family:"Fraunces",serif;margin:0 0 2px;font-size:16px;font-weight:700;line-height:1.2}
+  .pop .pa{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .pop .pcat{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff;margin-bottom:6px}
+  .pop .nowtag{font-size:11px;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:20px}
+  .pop .nowtag.o{background:rgba(47,106,58,.16);color:var(--open)}
+  .pop .nowtag.c{background:rgba(154,51,34,.16);color:var(--closed)}
+  .hr-grid{font-size:12px;margin:7px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .hr-row{display:flex;justify-content:space-between;gap:12px;padding:4px 9px}
+  .hr-row:nth-child(even){background:#f0e8d2}
+  .hr-row.today{background:rgba(44,114,108,.15);font-weight:700}
+  .hr-d{color:var(--muted)} .hr-row.today .hr-d{color:var(--teal-ink)}
+  .hr-t{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .pop .ph{font-size:11.5px;margin:6px 0;padding:6px 8px;background:#f0e8d2;border-radius:7px;line-height:1.5}
+  .plinks{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .plinks a{font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;text-decoration:none;color:var(--ink-soft)}
+  .plinks a:hover{background:#f1e9d4}
+  .pop .pacts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .pop .pacts a,.pop .pacts button{font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--line-2);background:#fffdf6;text-decoration:none;color:var(--ink)}
+  .pop .pacts .gm{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
+  .pop .pacts .ppdel{color:var(--closed)}
+  .pop select,.pop textarea,.pop input{width:100%;margin-top:5px;padding:6px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;font-family:inherit}
+  .chip.sel{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
+
+  #tableView{position:absolute;inset:0;background:var(--paper);z-index:400;display:none;flex-direction:column}
+  #tableView.on{display:flex}
+  .tv-bar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);background:#fbf7ec;flex:none}
+  .tv-bar .tt{font-family:"Fraunces",serif;font-weight:700;font-size:16px}
+  .tv-scroll{flex:1;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:max-content;min-width:100%;font-size:13px;font-family:"JetBrains Mono",monospace}
+  thead th{position:sticky;top:0;background:#efe6d0;text-align:left;padding:10px 12px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);border-bottom:2px solid var(--line-2);cursor:pointer;white-space:nowrap;z-index:2}
+  thead th:hover{background:#e6dabf}
+  thead th .ar{opacity:.4;margin-left:3px}
+  thead th.sorted .ar{opacity:1;color:var(--stamp)}
+  thead th.dcol{min-width:96px;cursor:default}
+  th.dtoday,td.dtoday{background:rgba(44,114,108,.1)}
+  tbody td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+  tbody td.wrap{white-space:normal;min-width:190px;max-width:300px}
+  tbody td.dcell{font-size:12px}
+  tbody tr:hover{background:#f4ecd7}
+  tbody tr:nth-child(even){background:rgba(0,0,0,.012)}
+  .tcat{display:inline-flex;align-items:center;gap:5px;font-weight:600}
+  .tcat .dot{width:9px;height:9px;border-radius:50%}
+  td .gl{color:var(--teal-ink);font-weight:700;text-decoration:none}
+  td .gl:hover{text-decoration:underline}
+  .tnum{font-variant-numeric:tabular-nums;color:var(--muted)}
+  .topen{color:var(--open);font-weight:700} .tclosed{color:var(--closed);font-weight:700}
+
+  .scrim{position:fixed;inset:0;background:rgba(35,30,12,.45);backdrop-filter:blur(2px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+  .scrim.on{display:flex}
+  .modal{background:var(--card);border-radius:18px;box-shadow:var(--shadow);max-width:560px;width:100%;max-height:88vh;overflow:auto;border:1px solid var(--line-2)}
+  .modal .mh{padding:18px 22px 4px;display:flex;align-items:flex-start;gap:10px}
+  .modal .mh h2{font-family:"Fraunces",serif;font-size:21px;margin:0;font-weight:800}
+  .modal .mh p{margin:3px 0 0;color:var(--muted);font-size:13px}
+  .modal .mh .close{margin-left:auto;font-size:20px;color:var(--muted);padding:2px 8px;border-radius:8px}
+  .modal .mh .close:hover{background:#efe6d0}
+  .modal .mb{padding:14px 22px 22px}
+  .modal textarea{width:100%;min-height:96px;border-radius:10px;border:1px solid var(--line-2);background:#fffdf6;padding:10px;font-family:"JetBrains Mono",monospace;font-size:12px;resize:vertical}
+  .modal .field input,.modal .field select{width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--line-2);background:#fffdf6}
+  .em-pick,.col-pick{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .em-pick button{font-size:18px;padding:5px;border-radius:8px;border:1px solid transparent}
+  .em-pick button:hover{background:#f0e8d2}
+  .em-pick button.sel{border-color:var(--teal);background:rgba(44,114,108,.12)}
+  .col-pick button{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line-2)}
+  .col-pick button.sel{box-shadow:0 0 0 2px var(--ink)}
+  .hint{font-size:12px;color:var(--muted);line-height:1.55}
+  .pillbtn{display:inline-block;padding:9px 15px;border-radius:10px;background:var(--ink);color:#f6f1e3;font-weight:600;font-size:13px;margin-top:8px;border:none}
+  .divlbl{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin:18px 0 10px}
+  .divlbl .ln{flex:1;height:1px;background:var(--line)}
+  .steps{font-size:13px;line-height:1.65;padding-left:20px;margin:6px 0 0}
+  .steps a{color:var(--teal-ink);font-weight:600}
+  .note-box{background:#f0e8d2;border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.55;margin-top:14px}
+  .maps-list{margin-bottom:6px}
+  .grouphdr{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin:14px 0 7px}
+  .mrow{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);margin-bottom:7px;background:#fffdf6}
+  .mrow.active{border-color:var(--teal);box-shadow:0 0 0 2px rgba(44,114,108,.15)}
+  .mrow .mname{flex:1;font-weight:600;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mrow .mname .cnt{font-size:11px;color:var(--muted);font-weight:500;margin-left:6px}
+  .mrow .mact{font-size:12px;color:var(--muted);padding:5px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fbf7ec;font-weight:600}
+  .mrow .mact:hover{background:#f1e9d4}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#f6f1e3;padding:11px 18px;border-radius:11px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);opacity:0;transition:.25s;z-index:1200;pointer-events:none;max-width:92vw;text-align:center}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .stat{font-size:12px;color:var(--muted);padding:0 4px}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .menu{position:relative}
+  .menu .pop-menu{position:absolute;right:0;top:44px;background:var(--card);border:1px solid var(--line-2);border-radius:12px;box-shadow:var(--shadow);padding:6px;min-width:230px;z-index:800;display:none}
+  .menu.on .pop-menu{display:block}
+  .menu .pop-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 11px;border-radius:8px;font-size:13.5px;font-weight:500}
+  .menu .pop-menu button:hover{background:#f1e9d4}
+  .menu .pop-menu .sep{height:1px;background:var(--line);margin:5px 4px}
+  .menu .pop-menu .mi{width:18px;text-align:center;opacity:.7}
+
+  .mobile-toggle{display:none}
+  @media (max-width:820px){
+    aside{position:absolute;inset:0 auto 0 0;width:88%;max-width:344px;transform:translateX(-104%);transition:.25s;box-shadow:var(--shadow)}
+    aside.open{transform:translateX(0)}
+    .mobile-toggle{display:inline-flex}
+    .search-wrap{max-width:none}
+    header{flex-wrap:wrap;gap:9px}
+    #mapBtn{max-width:150px}
+    .hbtns{order:3;width:100%;flex-wrap:wrap}
+    .btn.eng span.lbl{display:none}
+  }
+</style>
+
+<div id="app">
+  <header>
+    <button class="btn tab mobile-toggle" id="sideToggle" title="Places & filters">☰</button>
+    <div class="brand"><span class="glyph">🧭</span><h1>Wandermark</h1></div>
+    <button class="btn" id="mapBtn" title="Switch / manage maps">🗂️ Map ▾</button>
+    <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off"><div class="results" id="results"></div></div>
+    <div class="hbtns">
+      <button class="btn eng" id="engineBtn" title="Map engine">🗺️ <span class="lbl">OpenStreetMap</span></button>
+      <div class="seg"><button class="btn tab active" id="tabMap">🗺️ Map</button><button class="btn tab" id="tabTable">▦ Table</button></div>
+      <div class="menu" id="menu">
+        <button class="btn" id="menuBtn">⋯</button>
+        <div class="pop-menu">
+          <button data-act="maps"><span class="mi">🗂️</span> Switch / manage maps</button>
+          <button data-act="drive"><span class="mi">☁️</span> Sync with Google Drive</button>
+          <button data-act="lang"><span class="mi">🌐</span> Display language</button>
+          <button data-act="google"><span class="mi">🟢</span> Connect Google Maps</button>
+          <div class="sep"></div>
+          <button data-act="share"><span class="mi">🔗</span> Share this map (code)</button>
+          <button data-act="expjson"><span class="mi">⬇</span> Export this map (JSON)</button>
+          <button data-act="expcsv"><span class="mi">▦</span> Export this map (CSV)</button>
+          <button data-act="imp"><span class="mi">⬆</span> Import file (JSON / CSV / KML / KMZ)</button>
+          <button data-act="impcode"><span class="mi">🔑</span> Import from code</button>
+          <div class="sep"></div>
+          <button data-act="addcat"><span class="mi">🏷️</span> Manage categories</button>
+          <div class="sep"></div>
+          <div id="verTag" style="font-size:11px;color:var(--muted);padding:6px 11px"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <aside id="aside">
+      <div class="pane">
+        <div class="sec collapsible collapsed" id="filterSec">
+          <h3 class="toggler" id="filterToggle">Filter <span class="ln"></span> <span class="fbadge" id="fbadge" style="display:none"></span> <span class="caret">▾</span></h3>
+          <div class="sec-body">
+            <div class="field"><input id="textFilter" placeholder="Filter by name / note…" autocomplete="off"></div>
+            <div class="field"><label>Distance from</label><select id="anchorSel"></select></div>
+            <div class="row2">
+              <div class="field" style="width:108px"><label>Within (km)</label><input id="radius" type="number" min="0" step="0.5" placeholder="∞"></div>
+              <div class="field" style="flex:1;display:flex;align-items:flex-end"><button class="btn" id="geoBtn" style="width:100%;justify-content:center">📍 My location</button></div>
+            </div>
+            <div id="smartWrap" style="display:none;margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2px 0 6px;font-weight:600">Quick filters · from opening hours</label><div class="chips" id="smartChips"></div></div>
+            <label class="checkrow"><input type="checkbox" id="openOnly"> Filter by opening hours</label>
+            <div id="hoursControls" style="display:none">
+              <div class="row2">
+                <div class="field" style="flex:1"><label>Open on</label><select id="dayFilter">
+                  <option value="Mo">Monday</option><option value="Tu">Tuesday</option><option value="We">Wednesday</option>
+                  <option value="Th">Thursday</option><option value="Fr">Friday</option><option value="Sa">Saturday</option><option value="Su">Sunday</option>
+                </select></div>
+                <div class="field" style="flex:1"><label>At</label><select id="timeFilter">
+                  <option value="">Any time</option><option value="now">Open now</option><option value="+60">In 1 hour</option><option value="custom">Specific time…</option>
+                </select></div>
+              </div>
+              <div class="field" id="customTimeWrap" style="display:none"><label>Time</label><input id="customTime" type="time"></div>
+            </div>
+            <div id="tagFilterWrap" style="display:none"><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2px 0 6px;font-weight:600">Tags <span id="tagMode" class="ghostbtn" title="Toggle match mode" style="text-transform:none;letter-spacing:0">match all</span></label><div class="chips" id="tagChips"></div></div>
+            <button class="ghostbtn" id="resetFilters" style="margin-top:10px">↺ Reset all filters</button>
+          </div>
+        </div>
+
+        <div class="sec"><h3>Categories <span class="ln"></span> <button class="ghostbtn" id="catAll">All</button><button class="ghostbtn" id="catNone">None</button></h3>
+          <div class="chips" id="catChips"></div>
+          <button class="btn miniadd" id="addCatBtn" style="margin-top:10px">＋ New category</button></div>
+
+        <div class="sec"><h3>Places <span class="ln"></span> <span class="stat"><b id="shownCount">0</b>/<b id="totalCount">0</b></span></h3><div id="placeList"></div></div>
+      </div>
+    </aside>
+
+    <div id="map"></div>
+
+    <div id="tableView">
+      <div class="tv-bar"><span class="tt">▦ Spreadsheet view</span><span class="stat" id="tvCount"></span>
+        <div style="margin-left:auto;display:flex;gap:8px"><button class="btn" id="tvCsv">⬇ Export CSV</button><button class="btn solid" id="tvClose">✕ Back to map</button></div></div>
+      <div class="tv-scroll"><table id="dataTable"></table></div>
+    </div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".json,.csv,.kml,.kmz" style="display:none">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+"use strict";
+var WANDERMARK_VERSION="0.7.0";
+
+/* ===================== constants ===================== */
+var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
+var EMOJIS=["🍜","☕️","🥐","🍷","🏨","⛩️","🏛️","🛍️","🌳","🍣","🍱","🍦","🍺","🎑","📸","🎨","🚶","🏖️","🗼","🚉","💴","🧋","🍵","⭐️"];
+var DEFAULT_CATS=[
+  {id:"eat",name:"Eat",color:"#e0533d",emoji:"🍜"},{id:"coffee",name:"Coffee",color:"#9a6b45",emoji:"☕️"},
+  {id:"bakery",name:"Bakery",color:"#e08a2f",emoji:"🥐"},{id:"drinks",name:"Drinks",color:"#9a52c8",emoji:"🍷"},
+  {id:"stay",name:"Stay",color:"#3d7bd1",emoji:"🏨"},{id:"see",name:"See",color:"#2f8f86",emoji:"⛩️"},
+  {id:"shop",name:"Shop",color:"#d14f93",emoji:"🛍️"},{id:"other",name:"Other",color:"#6b7280",emoji:"📍"}];
+function freshCats(){ return DEFAULT_CATS.map(function(c){return {id:c.id,name:c.name,color:c.color,emoji:c.emoji};}); }
+var DEF={lat:35.6762,lng:139.6503,z:12};
+var DAYNAME={monday:"Mo",tuesday:"Tu",wednesday:"We",thursday:"Th",friday:"Fr",saturday:"Sa",sunday:"Su"};
+var DOWCODES=["Su","Mo","Tu","We","Th","Fr","Sa"];
+var DAYORDER=[["Mo","Mon"],["Tu","Tue"],["We","Wed"],["Th","Thu"],["Fr","Fri"],["Sa","Sat"],["Su","Sun"]];
+var LANGS=[["native","Local / native names"],["en","English"],["ja","日本語 (Japanese)"],["ko","한국어 (Korean)"],["zh-CN","中文 (Chinese)"],["fr","Français"],["es","Español"],["de","Deutsch"],["it","Italiano"]];
+
+var STORE_KEY="wandermark:data", GKEY_KEY="wandermark:gkey";
+var appSettings={lang:"native",drive:{folderId:"",key:"",auto:false}};
+var LIB={activeId:null,order:[],maps:{}};
+var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
+var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null};
+var gkey="";
+var markers={};
+
+/* ===================== storage ===================== */
+function hasWinStore(){ return (typeof window!=="undefined" && window.storage && typeof window.storage.get==="function"); }
+var Store={
+  get:function(k){ if(hasWinStore()) return window.storage.get(k,false).then(function(r){return r&&r.value?r.value:null;}).catch(function(){return null;});
+    try{ return Promise.resolve(window.localStorage?localStorage.getItem(k):null); }catch(e){ return Promise.resolve(null); } },
+  set:function(k,v){ if(hasWinStore()){ try{ window.storage.set(k,v,false); }catch(e){} return; } try{ if(window.localStorage) localStorage.setItem(k,v); }catch(e){} }
+};
+var saveTimer=null;
+function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(function(){ Store.set(STORE_KEY, JSON.stringify({v:2,settings:appSettings,lib:{activeId:LIB.activeId,order:LIB.order,maps:LIB.maps}})); },300); }
+
+/* ===================== maps (multi-map library) ===================== */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function activeMap(){ return LIB.maps[LIB.activeId]; }
+function newMap(name,kind){ var id=uid(); LIB.maps[id]={id:id,name:name||"Untitled map",kind:kind||"personal",places:[],categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); return id; }
+function setActive(id){ if(!LIB.maps[id]) return; LIB.activeId=id; state=LIB.maps[id]; if(!state.categories||!state.categories.length) state.categories=freshCats(); ui.activeCats={}; ui.geoAnchor=null; ui.customAnchor=null; }
+function switchMap(id){ if(id===LIB.activeId){ closeModal(); return; } save(); setActive(id); closeModal(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); else Engine.setView&&Engine.setView(DEF); } toast("Switched to “"+state.name+"”"); }
+function createMapFromData(o){ var id=uid(); LIB.maps[id]={id:id,name:o.name||"Imported map",kind:o.kind||"personal",
+    places:(o.places||[]).map(normalizePlace),categories:(o.categories&&o.categories.length)?o.categories:freshCats(),createdAt:Date.now()};
+  LIB.order.push(id); save(); setActive(id); renderMapBtn(); renderAll(); if(ui.mapReady&&state.places.length) Engine.fit(state.places); return id; }
+function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",
+  notes:p.notes||"",hours:p.hours||"",hoursByDay:p.hoursByDay||null,website:p.website||"",photoUrl:p.photoUrl||"",googleUrl:p.googleUrl||"",placeId:p.placeId||"",
+  tags:normalizeTags(p.tags),createdAt:p.createdAt||Date.now()}; }
+function normalizeTags(t){ if(Array.isArray(t)) return t.map(function(x){return (""+x).trim();}).filter(Boolean);
+  if(typeof t==="string"&&t) return t.split(/[;|,]/).map(function(x){return x.trim();}).filter(Boolean); return []; }
+function renderMapBtn(){ var b=document.getElementById("mapBtn"); var ic=state.source==="drive"?"☁️":(state.kind==="curated"?"⭐":"🗂️"); b.innerHTML=ic+" "+esc(state.name)+" ▾"; }
+
+/* ===================== helpers ===================== */
+function catById(id){ for(var i=0;i<state.categories.length;i++) if(state.categories[i].id===id) return state.categories[i]; return state.categories[state.categories.length-1]; }
+function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
+  s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s)); }
+function gmapsUrl(p){ if(p.googleUrl) return p.googleUrl;
+  if(p.placeId) return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.name||"")+"&query_place_id="+p.placeId;
+  return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((p.name||"")+", "+(p.address||(p.lat+","+p.lng))); }
+function tabelogUrl(p){ return "https://tabelog.com/rstLst/?sw="+encodeURIComponent(p.name||""); }
+function igUrl(p){ return "https://www.google.com/search?q="+encodeURIComponent('site:instagram.com "'+(p.name||"")+'"'); }
+function toast(m){ var t=document.getElementById("toast"); t.textContent=m; t.classList.add("on"); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("on");},2700); }
+function debounce(fn,ms){ var t; return function(){ var a=arguments,s=this; clearTimeout(t); t=setTimeout(function(){fn.apply(s,a);},ms); }; }
+
+function autoCategory(r){ var t=(r.type||"").toLowerCase(),c=(r.class||r.category||"").toLowerCase();
+  if(c==="tourism"){ if(["hotel","motel","hostel","guest_house","apartment","chalet"].indexOf(t)>=0) return "stay"; return "see"; }
+  if(c==="historic"||c==="leisure"||c==="natural") return "see";
+  if(c==="amenity"){ if(["restaurant","fast_food","food_court"].indexOf(t)>=0) return "eat";
+    if(["cafe","coffee_shop"].indexOf(t)>=0) return "coffee";
+    if(["bar","pub","biergarten","nightclub","wine_bar"].indexOf(t)>=0) return "drinks";
+    if(["theatre","cinema","arts_centre","place_of_worship","fountain"].indexOf(t)>=0) return "see"; }
+  if(c==="shop"){ if(["bakery","pastry","confectionery"].indexOf(t)>=0) return "bakery"; return "shop"; }
+  return "other"; }
+function autoCategoryGoogle(types){ types=types||[]; function has(){ for(var i=0;i<arguments.length;i++) if(types.indexOf(arguments[i])>=0) return true; return false; }
+  if(has("lodging")) return "stay"; if(has("bakery")) return "bakery"; if(has("cafe")) return "coffee";
+  if(has("bar","night_club")) return "drinks"; if(has("restaurant","meal_takeaway","meal_delivery","food")) return "eat";
+  if(has("museum","tourist_attraction","art_gallery","park","place_of_worship","zoo","aquarium","amusement_park")) return "see";
+  if(has("store","shopping_mall","clothing_store","book_store","supermarket","department_store")) return "shop";
+  return "other"; }
+function parseWeekdayText(arr){ var o={}; (arr||[]).forEach(function(line){ var low=line.toLowerCase(); for(var k in DAYNAME){ if(low.indexOf(k)===0){ o[DAYNAME[k]]=line.substring(line.indexOf(":")+1).trim(); } } }); return o; }
+
+function todayCode(){ return DOWCODES[new Date().getDay()]; }
+function nowMinutes(){ var d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function dayLabel(code){ for(var i=0;i<DAYORDER.length;i++) if(DAYORDER[i][0]===code) return DAYORDER[i][1]; return code; }
+function toMin(h,mm,ap){ h=parseInt(h,10); mm=mm?parseInt(mm,10):0; if(isNaN(h)) return null;
+  if(ap){ ap=ap.toLowerCase(); if(ap==="pm"&&h<12) h+=12; if(ap==="am"&&h===12) h=0; } return h*60+mm; }
+function parseTimeRanges(text){ if(text==null) return null; var t=(""+text).toLowerCase();
+  if(/closed/.test(t)) return [];
+  if(/24\s*hours|open 24|24\/7|24時間/.test(t)) return [[0,1440]];
+  t=t.replace(/[–—~〜]/g,"-").replace(/\bto\b/g,"-"); var out=[];
+  t.split(/,|;|・/).forEach(function(seg){ var m=seg.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if(!m) return; var s=toMin(m[1],m[2],m[3]||m[6]); var e=toMin(m[4],m[5],m[6]); if(s==null||e==null) return; out.push([s,e]); });
+  return out.length?out:null; }
+function placeOpenAt(p,dayCode,atMin){ if(!p.hoursByDay) return null; var txt=p.hoursByDay[dayCode]; if(txt==null) return null;
+  var ranges=parseTimeRanges(txt); if(ranges==null) return null; if(!ranges.length) return false;
+  for(var i=0;i<ranges.length;i++){ var s=ranges[i][0],e=ranges[i][1];
+    if(e<=s){ if(atMin>=s||atMin<e) return true; } else if(atMin>=s&&atMin<e) return true; } return false; }
+function openOnDay(p,dayCode){ if(p.hoursByDay){ var v=p.hoursByDay[dayCode]; return !!v && !/closed/i.test(v); }
+  if(p.hours){ var h=p.hours.toLowerCase(); if(h.indexOf("24/7")>=0) return true; if(h.indexOf(dayCode.toLowerCase())>=0) return true; } return false; }
+function statusNow(p){ return placeOpenAt(p, todayCode(), nowMinutes()); }
+function dayCell(p,code){ if(p.hoursByDay) return p.hoursByDay[code]||"—"; return ""; }
+function compactHoursForDay(p,dayCode){ if(p.hoursByDay){ var v=p.hoursByDay[dayCode]; return v||"—"; } return p.hours? (p.hours.length>44?p.hours.slice(0,42)+"…":p.hours):""; }
+function openAnyDay(p,min){ if(!p.hoursByDay) return false; for(var i=0;i<DOWCODES.length;i++){ if(placeOpenAt(p,DOWCODES[i],min)===true) return true; } return false; }
+function openWeekdayAt(p,min){ var wd=["Mo","Tu","We","Th","Fr"]; for(var i=0;i<wd.length;i++){ if(placeOpenAt(p,wd[i],min)===true) return true; } return false; }
+/* Filters computed from the structured hours we already fetch — no manual tagging. */
+var SMART=[
+  {id:"opennow",  label:"Open now",      test:function(p){ return statusNow(p)===true; }},
+  {id:"opentoday",label:"Open today",    test:function(p){ return openOnDay(p,todayCode()); }},
+  {id:"breakfast",label:"Breakfast",     test:function(p){ return openAnyDay(p,510); }},   /* open ~8:30 */
+  {id:"lunch",    label:"Weekday lunch", test:function(p){ return openWeekdayAt(p,750); }},/* open ~12:30 Mon–Fri */
+  {id:"dinner",   label:"Dinner",        test:function(p){ return openAnyDay(p,1140); }},  /* open ~19:00 */
+  {id:"late",     label:"Open late",     test:function(p){ return openAnyDay(p,1350); }},  /* open ~22:30 */
+  {id:"weekend",  label:"Open weekends", test:function(p){ return openOnDay(p,"Sa")||openOnDay(p,"Su"); }}
+];
+function smartById(id){ for(var i=0;i<SMART.length;i++) if(SMART[i].id===id) return SMART[i]; return null; }
+function mapHasHours(){ return state.places.some(function(p){ return !!p.hoursByDay; }); }
+
+/* ===================== filter ===================== */
+function activeTagList(){ var out=[]; for(var k in ui.activeTags) if(ui.activeTags[k]) out.push(k); return out; }
+function activeFilterCount(){ var n=0;
+  if((document.getElementById("textFilter").value||"").trim()) n++;
+  var rad=parseFloat(document.getElementById("radius").value); if(getAnchor()&&!isNaN(rad)&&rad>0) n++;
+  if(document.getElementById("openOnly").checked) n++;
+  for(var sk in ui.activeSmart) if(ui.activeSmart[sk]) n++;
+  n+=activeTagList().length;
+  for(var k in ui.activeCats) if(ui.activeCats[k]===false){ n++; break; } return n; }
+function getAnchor(){ var v=document.getElementById("anchorSel").value; if(!v) return null;
+  if(v==="__me") return ui.geoAnchor; if(v==="__custom") return ui.customAnchor;
+  if(v==="__center") return ui.mapReady?Engine.getCenter():null;
+  for(var i=0;i<state.places.length;i++) if(state.places[i].id===v) return state.places[i]; return null; }
+function getFiltered(){
+  var txt=(document.getElementById("textFilter").value||"").toLowerCase().trim();
+  var anchor=getAnchor(), rad=parseFloat(document.getElementById("radius").value);
+  var useHours=document.getElementById("openOnly").checked;
+  var day=document.getElementById("dayFilter").value||todayCode();
+  var tf=document.getElementById("timeFilter").value, atMin=null;
+  if(useHours&&tf){ if(tf==="now") atMin=nowMinutes(); else if(tf==="+60") atMin=(nowMinutes()+60)%1440;
+    else if(tf==="custom"){ var cv=document.getElementById("customTime").value; if(cv){ var pp=cv.split(":"); atMin=(parseInt(pp[0],10)||0)*60+(parseInt(pp[1],10)||0); } } }
+  var tags=activeTagList(), tagAny=ui.tagMode==="any";
+  var smarts=[]; for(var sk in ui.activeSmart){ if(ui.activeSmart[sk]){ var sf=smartById(sk); if(sf) smarts.push(sf); } }
+  return state.places.filter(function(p){
+    if(ui.activeCats[p.categoryId]===false) return false;
+    for(var si=0;si<smarts.length;si++){ if(!smarts[si].test(p)) return false; }
+    if(txt){ if(((p.name||"")+" "+(p.address||"")+" "+(p.notes||"")+" "+((p.tags||[]).join(" "))).toLowerCase().indexOf(txt)<0) return false; }
+    if(tags.length){ var pt=p.tags||[]; if(tagAny){ if(!tags.some(function(t){return pt.indexOf(t)>=0;})) return false; } else { if(!tags.every(function(t){return pt.indexOf(t)>=0;})) return false; } }
+    if(useHours){ var hasData=!!(p.hoursByDay||p.hours);
+      if(atMin!=null){ if(placeOpenAt(p,day,atMin)===false) return false; }
+      else if(hasData && !openOnDay(p,day)) return false; }
+    if(anchor && !isNaN(rad) && rad>0){ var dd=haversine(anchor,p); if(dd!=null && dd>rad) return false; }
+    return true;
+  }).map(function(p){ p._d=anchor?haversine(anchor,p):null; return p; });
+}
+
+/* ===================== popup ===================== */
+function hoursBlockHtml(p){ if(p.hoursByDay){ var today=todayCode();
+    var rows=DAYORDER.map(function(pair){ var v=p.hoursByDay[pair[0]]||"—";
+      return '<div class="hr-row'+(pair[0]===today?" today":"")+'"><span class="hr-d">'+pair[1]+'</span><span class="hr-t">'+esc(v)+"</span></div>"; }).join("");
+    return '<div class="hr-grid">'+rows+"</div>"; }
+  if(p.hours) return '<div class="ph">🕑 '+esc(p.hours)+"</div>"; return ""; }
+function makePopupNode(p){ var c=catById(p.categoryId);
+  var st=statusNow(p),nowtag = st===true?'<span class="nowtag o">Open now</span>':(st===false?'<span class="nowtag c">Closed now</span>':"");
+  var node=document.createElement("div"); node.className="pop";
+  var opts=state.categories.map(function(k){return '<option value="'+k.id+'"'+(k.id===p.categoryId?" selected":"")+'>'+k.emoji+" "+esc(k.name)+"</option>";}).join("");
+  var links='<div class="plinks">'+(p.website?'<a target="_blank" rel="noopener" href="'+esc(p.website)+'">🌐 Website</a>':"")+
+    '<a target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">🍽 Tabelog</a>'+
+    '<a target="_blank" rel="noopener" href="'+igUrl(p)+'">📷 Instagram</a></div>';
+  node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
+    '<span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+
+    "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
+    hoursBlockHtml(p)+links+'<select class="ppcat">'+opts+"</select>"+
+    '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
+    '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
+    '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
+    '<button class="ppsave">Save</button><button class="ppdel">Delete</button></div>';
+  node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); closePopup(); renderAll(); toast("Saved"); };
+  node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
+  return node; }
+function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
+
+/* ===================== Leaflet engine ===================== */
+var leafletMap=null, leafletLayer=null, leafletRef=null;
+var LeafletEngine={
+  ready:function(cb){ if(window.L) cb(); else setTimeout(function(){LeafletEngine.ready(cb);},150); },
+  init:function(el){ leafletMap=L.map(el,{zoomControl:true}).setView([DEF.lat,DEF.lng],DEF.z);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(leafletMap);
+    leafletLayer=L.layerGroup().addTo(leafletMap);
+    leafletMap.on("click",function(e){ pinNameModal(e.latlng.lat,e.latlng.lng); }); },
+  setView:function(v){ if(leafletMap) leafletMap.setView([v.lat,v.lng],v.z||12); },
+  getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
+  refresh:function(list){ leafletLayer.clearLayers(); markers={};
+    list.forEach(function(p){ var c=catById(p.categoryId);
+      var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div class="mk-pin" style="--c:'+c.color+'"><span>'+c.emoji+"</span></div>",iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
+      mk.bindPopup(function(){ return makePopupNode(p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[p.id]=mk; });
+    if(leafletRef){ leafletMap.removeLayer(leafletRef); leafletRef=null; }
+    var a=getAnchor(); if(a) leafletRef=L.marker([a.lat,a.lng],{icon:L.divIcon({className:"",html:'<div class="mk-ref"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:-100}).addTo(leafletMap); },
+  open:function(p){ leafletMap.flyTo([p.lat,p.lng],16,{duration:.6}); var mk=markers[p.id]; if(mk) setTimeout(function(){mk.openPopup();},650); },
+  fit:function(places){ if(!places.length) return; leafletMap.fitBounds(L.latLngBounds(places.map(function(p){return [p.lat,p.lng];})).pad(.18),{maxZoom:15}); },
+  resize:function(){ if(leafletMap) leafletMap.invalidateSize(); },
+  geocode:function(addr,cb){ var lang=appSettings.lang&&appSettings.lang!=="native"?("&accept-language="+appSettings.lang):"";
+    fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1"+lang+"&q="+encodeURIComponent(addr),{headers:{Accept:"application/json"}})
+      .then(function(r){return r.json();}).then(function(a){ if(a&&a[0]) cb({lat:+a[0].lat,lng:+a[0].lon}); else cb(null); }).catch(function(){ cb(null); }); },
+  suggest:function(q,cb){ var lang=appSettings.lang&&appSettings.lang!=="native"?("&accept-language="+appSettings.lang):"";
+    var url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=6"+lang+"&q="+encodeURIComponent(q);
+    try{ var b=leafletMap.getBounds(); url+="&viewbox="+b.getWest()+","+b.getNorth()+","+b.getEast()+","+b.getSouth()+"&bounded=0"; }catch(e){}
+    fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json();}).then(function(arr){ if(!arr){cb([]);return;}
+      cb(arr.map(function(r){ var catId=autoCategory(r);
+        var name=(r.namedetails&&r.namedetails.name)?r.namedetails.name:(r.display_name||"").split(",")[0];
+        var addr=(r.display_name||"").split(",").slice(1,4).join(",").trim();
+        var hours=(r.extratags&&r.extratags.opening_hours)||""; var web=(r.extratags&&(r.extratags.website||r.extratags["contact:website"]))||"";
+        return {name:name,address:addr,catId:catId,resolve:function(done){ done({name:name,address:addr,lat:+r.lat,lng:+r.lon,categoryId:catId,hours:hours,hoursByDay:null,website:web,photoUrl:"",googleUrl:"",placeId:""}); }};
+      })); }).catch(function(){ cb(null); }); }
+};
+
+/* ===================== Google engine ===================== */
+var googleMap=null, gInfo=null, gMarkers={}, gRef=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false;
+function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
+  return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
+var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website"];
+function placeFromDetails(d,fallbackName,placeId){ var hours="",hbd=null,photo="";
+  if(d.opening_hours&&d.opening_hours.weekday_text){ hours=d.opening_hours.weekday_text.join(" · "); hbd=parseWeekdayText(d.opening_hours.weekday_text); }
+  if(d.photos&&d.photos.length){ try{ photo=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); }catch(e){} }
+  return {name:d.name||fallbackName,address:d.formatted_address||"",lat:d.geometry.location.lat(),lng:d.geometry.location.lng(),
+    categoryId:autoCategoryGoogle(d.types),hours:hours,hoursByDay:hbd,website:d.website||"",photoUrl:photo,googleUrl:d.url||"",placeId:placeId}; }
+var GoogleEngine={
+  ready:function(cb){ if(window.google&&window.google.maps&&window.google.maps.places){ cb(); return; }
+    window.__wmReady=function(){ cb(); }; window.gm_authFailure=function(){ onGkeyRejected(); };
+    if(gScriptStarted) return; gScriptStarted=true;
+    var lang=(appSettings.lang&&appSettings.lang!=="native")?("&language="+appSettings.lang):"";
+    var s=document.createElement("script");
+    s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(gkey)+"&libraries=places&callback=__wmReady&loading=async&v=weekly"+lang;
+    s.async=true; s.defer=true; s.onerror=function(){ onGoogleLoadError(); }; document.head.appendChild(s); },
+  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,gestureHandling:"greedy",clickableIcons:false});
+    gInfo=new google.maps.InfoWindow({maxWidth:284}); acService=new google.maps.places.AutocompleteService();
+    placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
+    googleMap.addListener("click",function(e){ pinNameModal(e.latLng.lat(),e.latLng.lng()); }); },
+  setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
+  getCenter:function(){ return googleMap.getCenter().toJSON(); },
+  refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
+    list.forEach(function(p){ var c=catById(p.categoryId);
+      var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color),label:{text:c.emoji,fontSize:"15px"},title:p.name||""});
+      mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk; });
+    if(gRef){ gRef.setMap(null); gRef=null; }
+    var a=getAnchor(); if(a) gRef=new google.maps.Marker({position:{lat:a.lat,lng:a.lng},map:googleMap,zIndex:-100,icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2c726c",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
+  open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); } },
+  fit:function(places){ if(!places.length) return; var b=new google.maps.LatLngBounds(); places.forEach(function(p){ b.extend({lat:p.lat,lng:p.lng}); }); googleMap.fitBounds(b,60); if(places.length===1) googleMap.setZoom(15); },
+  resize:function(){},
+  geocode:function(addr,cb){ if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
+  suggest:function(q,cb){ if(!acService){ cb([]); return; } var req={input:q}; try{ var b=googleMap.getBounds(); if(b) req.bounds=b; }catch(e){}
+    acService.getPlacePredictions(req,function(preds,status){ if(status!==google.maps.places.PlacesServiceStatus.OK||!preds){ cb([]); return; }
+      cb(preds.map(function(pr){ var catId=autoCategoryGoogle(pr.types); var sf=pr.structured_formatting||{};
+        return {name:sf.main_text||pr.description,address:sf.secondary_text||"",catId:catId,resolve:function(done){
+          placesService.getDetails({placeId:pr.place_id,fields:GET_FIELDS},function(d,st){
+            if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ done(null); return; } done(placeFromDetails(d,pr.description,pr.place_id)); }); }};
+      })); }); }
+};
+function refetchAll(){ if(ui.engine!=="google"||!placesService){ toast("Connect Google first"); return; }
+  var todo=state.places.filter(function(p){return p.placeId;}); if(!todo.length){ toast("No Google places to refresh"); return; }
+  var i=0; toast("Refreshing "+todo.length+" place(s)…");
+  (function next(){ if(i>=todo.length){ renderAll(); toast("Updated "+todo.length+" place(s)"); return; } var p=todo[i++];
+    placesService.getDetails({placeId:p.placeId,fields:GET_FIELDS},function(d,st){ if(st===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry){ var np=placeFromDetails(d,p.name,p.placeId);
+      p.name=np.name; p.address=np.address; p.hours=np.hours; p.hoursByDay=np.hoursByDay; p.website=np.website||p.website; p.photoUrl=np.photoUrl||p.photoUrl; p.googleUrl=np.googleUrl||p.googleUrl; }
+      setTimeout(next,130); }); })(); }
+
+var Engine=LeafletEngine;
+
+/* ===================== engine switching ===================== */
+function teardownMap(){ ui.mapReady=false;
+  try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; } }catch(e){}
+  googleMap=null; gInfo=null; gRef=null; markers={}; gMarkers={};
+  var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
+function startEngine(kind){ teardownMap();
+  if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }
+  updateEngineBadge();
+  Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); }); }
+function updateEngineBadge(){ var b=document.getElementById("engineBtn");
+  if(ui.engine==="google"){ b.innerHTML='🟢 <span class="lbl">Google ✓</span>'; b.classList.add("on"); b.title="Connected to Google Maps — click to manage"; }
+  else { b.innerHTML='🗺️ <span class="lbl">OpenStreetMap</span>'; b.classList.remove("on"); b.title="Keyless. Click to connect Google Maps for better search."; } }
+function onGkeyRejected(){ toast("Google rejected that key. Check it’s valid with Maps JavaScript + Places APIs enabled, then reload."); gkey=""; Store.set(GKEY_KEY,""); startEngine("osm"); }
+function onGoogleLoadError(){ toast("Couldn’t load Google here (often blocked inside previews). Download the file and open it in your browser."); startEngine("osm"); }
+
+/* ===================== add place ===================== */
+function addPlace(o){ var p=normalizePlace(o); state.places.push(p); renderAll(); if(ui.view==="map"&&ui.mapReady) Engine.open(p); toast("Added “"+(p.name||"place")+"”"); return p; }
+
+/* ===================== search ===================== */
+var resultsEl=document.getElementById("results");
+function hideResults(){ resultsEl.classList.remove("on"); resultsEl.innerHTML=""; }
+function showResultsMsg(m){ resultsEl.innerHTML='<div class="res note">'+esc(m)+"</div>"; resultsEl.classList.add("on"); }
+var doSearch=debounce(function(q){ if(!q||q.length<3){ hideResults(); return; } if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
+  showResultsMsg("Searching…");
+  Engine.suggest(q,function(items){ if(items===null){ showResultsMsg("Search is offline here. Click the map to drop a pin by hand."); return; }
+    if(!items.length){ showResultsMsg("No matches near here. Try a broader term, or pan the map closer."); return; }
+    resultsEl.innerHTML="";
+    items.forEach(function(it){ var c=catById(it.catId)||catById("other"); var d=document.createElement("div"); d.className="res";
+      d.innerHTML='<span class="rt">'+(c?c.emoji:"📍")+'</span><div style="flex:1;min-width:0"><div class="rn">'+esc(it.name)+'</div><div class="ra">'+esc(it.address)+'</div></div><span class="badge">'+esc(c?c.name:"Other")+"</span>";
+      d.onclick=function(){ showResultsMsg("Adding…"); it.resolve(function(place){ if(!place){ toast("Couldn’t load that place"); hideResults(); return; } addPlace(place); document.getElementById("search").value=""; hideResults(); }); };
+      resultsEl.appendChild(d); }); }); },420);
+
+/* ===================== rendering ===================== */
+function renderAll(){ renderCatChips(); renderSmartFilters(); renderTagFilter(); renderAnchorSel(); renderPlaces(); updateFilterBadge(); if(ui.mapReady&&Engine) Engine.refresh(getFiltered()); if(ui.view==="table") renderTable(); save(); }
+function renderSmartFilters(){ var wrap=document.getElementById("smartWrap"),el=document.getElementById("smartChips");
+  if(!mapHasHours()){ wrap.style.display="none"; el.innerHTML=""; for(var k in ui.activeSmart) delete ui.activeSmart[k]; return; }
+  wrap.style.display=""; el.innerHTML="";
+  SMART.forEach(function(s){ var on=!!ui.activeSmart[s.id]; var n=state.places.filter(s.test).length;
+    var d=document.createElement("div"); d.className="chip"+(on?" sel":""); d.innerHTML=esc(s.label)+' <span class="ct">'+n+"</span>";
+    d.onclick=function(){ if(on) delete ui.activeSmart[s.id]; else ui.activeSmart[s.id]=true; renderAll(); }; el.appendChild(d); }); }
+function allTags(){ var set={},out=[]; state.places.forEach(function(p){ (p.tags||[]).forEach(function(t){ if(!set[t]){ set[t]=1; out.push(t); } }); }); out.sort(function(a,b){return a.localeCompare(b);}); return out; }
+function renderTagFilter(){ var tags=allTags(),wrap=document.getElementById("tagFilterWrap"),el=document.getElementById("tagChips");
+  // drop active tags that no longer exist
+  for(var k in ui.activeTags){ if(tags.indexOf(k)<0) delete ui.activeTags[k]; }
+  if(!tags.length){ wrap.style.display="none"; el.innerHTML=""; return; }
+  wrap.style.display=""; el.innerHTML="";
+  document.getElementById("tagMode").textContent=(ui.tagMode==="any"?"match any":"match all");
+  tags.forEach(function(t){ var on=!!ui.activeTags[t]; var d=document.createElement("div"); d.className="chip"+(on?" sel":"");
+    var n=state.places.filter(function(p){return (p.tags||[]).indexOf(t)>=0;}).length;
+    d.innerHTML=esc(t)+' <span class="ct">'+n+"</span>";
+    d.onclick=function(){ if(on) delete ui.activeTags[t]; else ui.activeTags[t]=true; renderAll(); }; el.appendChild(d); }); }
+function updateFilterBadge(){ var n=activeFilterCount(),b=document.getElementById("fbadge"); if(n){ b.style.display=""; b.textContent=n; } else b.style.display="none"; }
+function renderCatChips(){ var el=document.getElementById("catChips"); el.innerHTML="";
+  state.categories.forEach(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length; var active=ui.activeCats[c.id]!==false;
+    var d=document.createElement("div"); d.className="chip"+(active?"":" off");
+    d.innerHTML='<span class="dot" style="background:'+c.color+'"></span>'+esc(c.name)+' <span class="ct">'+n+"</span>";
+    d.onclick=function(){ ui.activeCats[c.id]=!active; renderAll(); }; el.appendChild(d); }); }
+function renderAnchorSel(){ var sel=document.getElementById("anchorSel"),cur=sel.value;
+  var html='<option value="">— none —</option>';
+  html+='<option value="__me">📍 My location'+(ui.geoAnchor?" ✓":"")+"</option>";
+  html+='<option value="__custom">'+(ui.customAnchor?("📌 "+esc(ui.customAnchor.label||"Custom")):"🔎 Custom address…")+"</option>";
+  html+='<option value="__center">🧭 Map center</option>';
+  state.places.slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).forEach(function(p){
+    html+='<option value="'+p.id+'">'+catById(p.categoryId).emoji+" "+esc(p.name||"(unnamed)")+"</option>"; });
+  sel.innerHTML=html; sel.value=cur; }
+function renderPlaces(){ var list=getFiltered();
+  list.sort(function(a,b){ if(a._d!=null&&b._d!=null) return a._d-b._d; return (a.name||"").localeCompare(b.name||""); });
+  var el=document.getElementById("placeList"); el.innerHTML="";
+  document.getElementById("shownCount").textContent=list.length; document.getElementById("totalCount").textContent=state.places.length;
+  if(!state.places.length){ el.innerHTML='<div class="empty">No places yet.<br>Search above to drop your first pin ↑</div>'; return; }
+  if(!list.length){ el.innerHTML='<div class="empty">Nothing matches your filters.</div>'; return; }
+  list.forEach(function(p){ var c=catById(p.categoryId);
+    var meta='<span><span class="cdot" style="background:'+c.color+'"></span> '+esc(c.name)+"</span>";
+    if(p._d!=null) meta+='<span class="km">'+p._d.toFixed(p._d<10?1:0)+" km</span>";
+    var st=statusNow(p); if(st===true) meta+='<span class="open">● Open</span>'; else if(st===false) meta+='<span class="closed">● Closed</span>';
+    var pem = p.photoUrl ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+c.emoji+"</span></div>"
+                         : '<div class="pem" style="background:'+c.color+'">'+c.emoji+"</div>";
+    var div=document.createElement("div"); div.className="place";
+    div.innerHTML=pem+'<div><div class="pn">'+esc(p.name||"(unnamed)")+'</div><div class="pmeta">'+meta+"</div></div>";
+    div.onclick=function(){ if(ui.view!=="map") setView("map"); if(ui.mapReady) Engine.open(p); closeSidebarMobile(); };
+    el.appendChild(div); }); }
+
+var sortCol="name",sortDir=1;
+function renderTable(){ var list=getFiltered(),anchor=getAnchor(),today=todayCode();
+  list.sort(function(a,b){ var av,bv; switch(sortCol){
+    case "cat": av=catById(a.categoryId).name; bv=catById(b.categoryId).name; break;
+    case "dist": return (((a._d==null?Infinity:a._d))-((b._d==null?Infinity:b._d)))*sortDir;
+    case "status": var rk={"true":0,"null":1,"false":2}; av=rk[String(statusNow(a))]; bv=rk[String(statusNow(b))]; return (av-bv)*sortDir;
+    case "address": av=a.address||""; bv=b.address||""; break;
+    case "notes": av=a.notes||""; bv=b.notes||""; break;
+    case "tags": av=(a.tags||[]).join(", "); bv=(b.tags||[]).join(", "); break;
+    default: av=a.name||""; bv=b.name||""; } return (""+av).localeCompare(""+bv)*sortDir; });
+  document.getElementById("tvCount").innerHTML="<b>"+list.length+"</b> places";
+  function th(col,label){ var s=(col===sortCol)?" sorted":"",ar=(col===sortCol)?(sortDir>0?"▲":"▼"):"▾"; return '<th class="'+s+'" data-col="'+col+'">'+label+' <span class="ar">'+ar+"</span></th>"; }
+  var head="<thead><tr>"+th("name","Name")+th("cat","Category")+th("status","Now")+th("address","Address")+
+    DAYORDER.map(function(d){ return '<th class="dcol'+(d[0]===today?" dtoday":"")+'">'+d[1]+"</th>"; }).join("")+
+    (anchor?th("dist","Dist km"):"")+th("tags","Tags")+th("notes","Notes")+"<th>Links</th></tr></thead>";
+  var body="<tbody>"+(list.length?list.map(function(p){ var c=catById(p.categoryId); var st=statusNow(p);
+    var stCell = st===true?'<span class="topen">Open</span>':(st===false?'<span class="tclosed">Closed</span>':'<span class="tnum">—</span>');
+    var tds="<td>"+esc(p.name||"")+"</td>"+'<td><span class="tcat"><span class="dot" style="background:'+c.color+'"></span>'+c.emoji+" "+esc(c.name)+"</span></td>"+
+      "<td>"+stCell+"</td>"+'<td class="wrap">'+esc(p.address||"")+"</td>"+
+      DAYORDER.map(function(d){ return '<td class="dcell'+(d[0]===today?" dtoday":"")+'">'+esc(dayCell(p,d[0]))+"</td>"; }).join("");
+    if(anchor) tds+='<td class="tnum">'+(p._d!=null?p._d.toFixed(1):"")+"</td>";
+    tds+='<td class="wrap">'+esc((p.tags||[]).join(", "))+"</td>"+'<td class="wrap">'+esc(p.notes||"")+"</td>"+'<td><a class="gl" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">Maps</a> · <a class="gl" target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">食べ</a></td>';
+    return "<tr>"+tds+"</tr>"; }).join(""):'<tr><td colspan="14" style="text-align:center;color:#7c7866;padding:30px;font-family:Fraunces,serif;font-style:italic">No places match.</td></tr>')+"</tbody>";
+  var t=document.getElementById("dataTable"); t.innerHTML=head+body;
+  t.querySelectorAll("th[data-col]").forEach(function(th){ th.onclick=function(){ var col=th.getAttribute("data-col"); if(col===sortCol) sortDir*=-1; else {sortCol=col;sortDir=1;} renderTable(); }; }); }
+
+/* ===================== pin / address / geo ===================== */
+function pinNameModal(lat,lng){ if(scrim.classList.contains("on")) return;
+  openModal('<div class="mh"><div><h2>Drop a pin</h2><p>'+lat.toFixed(4)+", "+lng.toFixed(4)+'</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Name</label><input id="pinName" placeholder="What’s here?"></div>'+
+    '<div class="field"><label>Category</label><select id="pinCat">'+state.categories.map(function(k){return '<option value="'+k.id+'">'+k.emoji+" "+esc(k.name)+"</option>";}).join("")+"</select></div>"+
+    '<button class="pillbtn" id="pinAdd">＋ Add pin</button></div>');
+  modal.querySelector(".close").onclick=closeModal; var inp=modal.querySelector("#pinName"); inp.focus();
+  function go(){ addPlace({name:inp.value.trim()||"Pinned spot",lat:lat,lng:lng,categoryId:modal.querySelector("#pinCat").value}); closeModal(); }
+  modal.querySelector("#pinAdd").onclick=go; inp.addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
+function requestGeo(){ var sel=document.getElementById("anchorSel");
+  if(!navigator.geolocation){ toast("Location isn’t available in this browser"); sel.value=""; return; }
+  toast("Getting your location…");
+  navigator.geolocation.getCurrentPosition(function(pos){ ui.geoAnchor={lat:pos.coords.latitude,lng:pos.coords.longitude}; sel.value="__me"; renderAll(); toast("Using your location as the distance point"); },
+    function(){ toast("Couldn’t get location (permission denied?)"); if(sel.value==="__me") sel.value=""; }); }
+function customAddressModal(){ openModal('<div class="mh"><div><h2>Distance from an address</h2><p>Type any address or place to measure distances from.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Address</label><input id="addrIn" placeholder="e.g. Tokyo Station"></div><button class="pillbtn" id="addrGo">Set point</button></div>');
+  modal.querySelector(".close").onclick=function(){ closeModal(); var s=document.getElementById("anchorSel"); if(s.value==="__custom"&&!ui.customAnchor) s.value=""; };
+  var inp=modal.querySelector("#addrIn"); inp.focus();
+  function go(){ var v=inp.value.trim(); if(!v){ toast("Type an address"); return; } toast("Looking up address…");
+    Engine.geocode(v,function(r){ if(!r){ toast("Couldn’t find that address"); return; } ui.customAnchor={lat:r.lat,lng:r.lng,label:v}; document.getElementById("anchorSel").value="__custom"; closeModal(); renderAll(); toast("Distance point set"); }); }
+  modal.querySelector("#addrGo").onclick=go; inp.addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
+
+/* ===================== modals ===================== */
+var scrim=document.getElementById("scrim"),modal=document.getElementById("modal");
+function openModal(html){ modal.innerHTML=html; scrim.classList.add("on"); }
+function closeModal(){ scrim.classList.remove("on"); modal.innerHTML=""; }
+scrim.addEventListener("click",function(e){ if(e.target===scrim) closeModal(); });
+
+function mapsModal(){ var personal=[],curated=[],synced=[];
+  LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.source==="drive") synced.push(m); else if(m.kind==="curated") curated.push(m); else personal.push(m); });
+  function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=m.source==="drive"?"☁️ ":(m.kind==="curated"?"⭐ ":"");
+    var acts=(m.source==="drive")?'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'
+      :'<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button><button class="mact" data-del="'+m.id+'">Delete</button>';
+    return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
+  var dcfg=appSettings.drive||{}; var driveOn=!!(dcfg.folderId&&dcfg.key);
+  openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="maps-list">'+
+    (personal.length?'<div class="grouphdr">My maps</div>'+rows(personal):"")+
+    (curated.length?'<div class="grouphdr">Curated / imported lists</div>'+rows(curated):"")+
+    (synced.length?'<div class="grouphdr">☁️ Shared from Drive</div>'+rows(synced):"")+
+    (!personal.length&&!curated.length&&!synced.length?'<p class="hint">No maps yet.</p>':"")+
+    "</div>"+
+    (driveOn?'<button class="ghostbtn" id="driveRefresh" style="margin-bottom:6px">↻ Refresh maps from Drive</button>':"")+
+    "<div class=\"divlbl\"><span class=\"ln\"></span>New map<span class=\"ln\"></span></div>"+
+    '<div class="row2"><div class="field" style="flex:1;margin:0"><input id="newMapName" placeholder="e.g. Kyoto, Lisbon, Tabelog Ramen…"></div><button class="pillbtn" id="newMapGo" style="margin:0">＋ Create</button></div>'+
+    '<p class="hint" style="margin-top:12px">Each KML/KMZ or Wandermark file you import becomes its own map. To pull a whole folder of maps automatically, use <b>☁️ Sync with Google Drive</b> in the ⋯ menu.</p></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
+  modal.querySelectorAll("[data-go]").forEach(function(el){ el.onclick=function(){ switchMap(el.getAttribute("data-go")); }; });
+  modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-ren")]; var nm=prompt("Rename map:",m.name); if(nm!=null){ m.name=nm.trim()||m.name; save(); renderMapBtn(); mapsModal(); } }; });
+  modal.querySelectorAll("[data-dup]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-dup")];
+    createMapFromData({name:m.name+(m.source==="drive"?"":" copy"),kind:m.kind,places:JSON.parse(JSON.stringify(m.places)),categories:JSON.parse(JSON.stringify(m.categories))}); toast(m.source==="drive"?"Copied to your maps (editable)":"Duplicated"); mapsModal(); }; });
+  modal.querySelectorAll("[data-del]").forEach(function(el){ el.onclick=function(){ var id=el.getAttribute("data-del"); if(LIB.order.length<=1){ toast("Keep at least one map"); return; }
+    var m=LIB.maps[id]; if(!confirm("Delete map “"+m.name+"” and its "+m.places.length+" places? This can’t be undone.")) return;
+    delete LIB.maps[id]; LIB.order=LIB.order.filter(function(x){return x!==id;}); if(LIB.activeId===id) setActive(LIB.order[0]);
+    save(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); } mapsModal(); toast("Map deleted"); }; });
+  var go=function(){ var nm=modal.querySelector("#newMapName").value.trim(); if(!nm){ toast("Name your map"); return; } var id=newMap(nm,"personal"); switchMap(id); };
+  modal.querySelector("#newMapGo").onclick=go; modal.querySelector("#newMapName").addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
+
+/* ----- Google Drive sync (read-only, no sign-in) ----- */
+function driveExtractId(s){ s=(s||"").trim(); var m=s.match(/\/folders\/([A-Za-z0-9_\-]+)/); if(m) return m[1]; m=s.match(/[?&]id=([A-Za-z0-9_\-]+)/); if(m) return m[1]; m=s.match(/\/d\/([A-Za-z0-9_\-]+)/); if(m) return m[1]; return s; }
+function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId+"' in parents and trashed=false");
+  var url="https://www.googleapis.com/drive/v3/files?q="+q+"&key="+encodeURIComponent(key)+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
+  fetch(url).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
+function driveFetchFile(id,key,cb){ fetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media&key="+encodeURIComponent(key)).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
+function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
+  if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (⋯ → Sync with Google Drive)"); return; }
+  if(!opts.silent) toast("Syncing maps from Drive…");
+  driveListFolder(fid,key,function(files,err){
+    if(err||!files){ if(!opts.silent) toast("Drive sync failed — folder must be shared “Anyone with the link”, and the key needs Drive API enabled."); return; }
+    var jsons=files.filter(function(f){ return /\.json$/i.test(f.name); });
+    if(!jsons.length){ if(!opts.silent) toast("No .json maps found in that Drive folder"); if(opts.then) opts.then(); return; }
+    var i=0,added=0,updated=0,seen={};
+    (function next(){
+      if(i>=jsons.length){
+        Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(m.source==="drive"&&m.driveId&&!seen[m.driveId]){ delete LIB.maps[k]; LIB.order=LIB.order.filter(function(x){return x!==k;}); if(LIB.activeId===k){ setActive(LIB.order[0]||newMap("My map","personal")); } } });
+        save(); renderMapBtn(); renderAll(); if(!opts.silent) toast("Drive: "+added+" new, "+updated+" updated"); if(opts.then) opts.then(); return;
+      }
+      var f=jsons[i++]; seen[f.id]=true;
+      driveFetchFile(f.id,key,function(txt){ if(txt){ try{ var data=JSON.parse(txt); var fallbackName=f.name.replace(/\.json$/i,"");
+        var existing=null; Object.keys(LIB.maps).forEach(function(k){ if(LIB.maps[k].driveId===f.id) existing=LIB.maps[k]; });
+        if(existing){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; updated++; }
+        else { var id=uid(); LIB.maps[id]={id:id,name:data.name||fallbackName,kind:data.kind||"personal",source:"drive",driveId:f.id,places:(data.places||[]).map(normalizePlace),categories:(data.categories&&data.categories.length)?data.categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); added++; }
+      }catch(e){} } setTimeout(next,80); });
+    })();
+  });
+}
+function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",auto:false};
+  openModal('<div class="mh"><div><h2>Sync with Google Drive</h2><p>Auto-build your map directory from a shared Drive folder — no sign-in.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Shared folder link or ID</label><input id="dFolder" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.folderId)+'"></div>'+
+    '<div class="field"><label>Drive API key</label><input id="dKey" placeholder="AIza… (Drive API enabled)" value="'+esc(d.key||"")+'"></div>'+
+    '<label class="checkrow"><input type="checkbox" id="dAuto"'+(d.auto?" checked":"")+'> Auto-sync every time I open Wandermark</label>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="dSync" style="background:var(--teal)">↻ Save &amp; sync now</button>'+
+    ((d.folderId||d.key)?'<button class="pillbtn" id="dOff" style="background:#9a3322">Disconnect</button>':"")+"</div>"+
+    '<div class="divlbl"><span class="ln"></span>How it works<span class="ln"></span></div>'+
+    '<ol class="steps"><li>Put your map files (the JSON you get from <b>Export this map</b> or the scraper) into one Drive folder.</li>'+
+    '<li>Share that folder: <b>Anyone with the link → Viewer</b>.</li>'+
+    '<li>Paste the folder link above, plus a Google API key with the <b>Drive API</b> enabled (can be the same project as your Maps key, but enable Drive API on it).</li>'+
+    '<li>Wandermark lists the folder and loads every <b>.json</b> as a map under “☁️ Shared from Drive”, refreshing them on each sync.</li></ol>'+
+    '<div class="note-box">This is <b>read-only</b>: friends always see your latest folder automatically, and changing a file in Drive updates everyone on their next sync. Saving edits <i>back</i> to Drive from the browser would need Google sign-in and a hosted copy of the app — ask if you want that. Synced maps are read-only here; use “Copy to my maps” to edit a local version.<br><br>If sync fails when opening the file locally, the key may be restricted by website — use an unrestricted key (or host the app).</div></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#dSync").onclick=function(){ appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:modal.querySelector("#dKey").value.trim(),auto:modal.querySelector("#dAuto").checked}; save();
+    if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and a key"); return; } closeModal(); syncDrive({}); };
+  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",key:"",auto:false}; save(); closeModal(); toast("Drive disconnected (synced maps kept)"); }; }
+
+function categoryModal(){ var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
+    return '<div class="catrow" data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span><span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span></div>'; }).join("");
+  openModal('<div class="mh"><div><h2>Categories</h2><p>For the current map. Tap a category to rename, recolor, merge, or delete it.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div>'+rows+'</div><div class="divlbl"><span class="ln"></span>Add a category<span class="ln"></span></div>'+
+    '<div class="field"><label>Name</label><input id="ncName" placeholder="e.g. Hidden gems"></div>'+
+    '<div class="field"><label>Icon</label><div class="em-pick" id="ncEmoji"></div></div>'+
+    '<div class="field"><label>Color</label><div class="col-pick" id="ncColor"></div></div><button class="pillbtn" id="ncAdd">＋ Add category</button></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  var pe=modal.querySelector("#ncEmoji"),chosenE={v:EMOJIS[0]};
+  EMOJIS.forEach(function(em,i){ var b=document.createElement("button"); b.textContent=em; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
+  var pc=modal.querySelector("#ncColor"),chosenC={v:PALETTE[0]};
+  PALETTE.forEach(function(col,i){ var b=document.createElement("button"); b.style.background=col; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
+  modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); renderAll(); categoryModal(); toast("Category added"); };
+  modal.querySelectorAll("[data-edit]").forEach(function(row){ row.onclick=function(){ editCategoryModal(row.getAttribute("data-edit")); }; }); }
+
+function editCategoryModal(id){ var c=catById(id);
+  var others=state.categories.filter(function(x){return x.id!==id;});
+  var mergeOpts='<option value="">— pick a category —</option>'+others.map(function(o){return '<option value="'+o.id+'">'+o.emoji+" "+esc(o.name)+"</option>";}).join("");
+  openModal('<div class="mh"><div><h2>Edit category</h2><p>Rename, restyle, or fold this category into another.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Name</label><input id="ecName" value="'+esc(c.name)+'"></div>'+
+    '<div class="field"><label>Icon</label><div class="em-pick" id="ecEmoji"></div></div>'+
+    '<div class="field"><label>Color</label><div class="col-pick" id="ecColor"></div></div>'+
+    '<button class="pillbtn" id="ecSave" style="background:var(--teal)">Save changes</button>'+
+    '<div class="divlbl"><span class="ln"></span>Merge<span class="ln"></span></div>'+
+    '<div class="field"><label>Move all places into another category, then delete this one</label><select id="ecMerge">'+mergeOpts+'</select></div>'+
+    '<button class="pillbtn" id="ecMergeBtn">Merge &amp; delete</button> '+
+    '<button class="pillbtn" id="ecDel" style="background:#9a3322">Delete (move places to “Other”)</button></div>');
+  modal.querySelector(".close").onclick=function(){ categoryModal(); };
+  var pe=modal.querySelector("#ecEmoji"),chosenE={v:c.emoji};
+  (EMOJIS.indexOf(c.emoji)<0?[c.emoji].concat(EMOJIS):EMOJIS).forEach(function(em){ var b=document.createElement("button"); b.textContent=em; if(em===c.emoji)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
+  var pc=modal.querySelector("#ecColor"),chosenC={v:c.color};
+  (PALETTE.indexOf(c.color)<0?[c.color].concat(PALETTE):PALETTE).forEach(function(col){ var b=document.createElement("button"); b.style.background=col; if(col===c.color)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
+  modal.querySelector("#ecSave").onclick=function(){ c.name=modal.querySelector("#ecName").value.trim()||c.name; c.emoji=chosenE.v; c.color=chosenC.v; renderAll(); categoryModal(); toast("Category updated"); };
+  modal.querySelector("#ecMergeBtn").onclick=function(){ var tid=modal.querySelector("#ecMerge").value; if(!tid){ toast("Pick a category to merge into"); return; } if(state.categories.length<=1){ toast("Keep at least one category"); return; }
+    var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=tid; });
+    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast("Merged "+moved+" place(s) into "+catById(tid).name); };
+  modal.querySelector("#ecDel").onclick=function(){ if(state.categories.length<=1){ toast("Keep at least one category"); return; }
+    var fb=state.categories[state.categories.length-1].id===id?state.categories[0].id:state.categories[state.categories.length-1].id;
+    var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=fb; });
+    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast(moved?("Moved "+moved+" place(s) to "+catById(fb).name):"Category removed"); }; }
+
+function languageModal(){ var opts=LANGS.map(function(l){return '<option value="'+l[0]+'"'+(appSettings.lang===l[0]?" selected":"")+">"+l[1]+"</option>";}).join("");
+  openModal('<div class="mh"><div><h2>Display language</h2><p>Language for place names &amp; addresses.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Language</label><select id="langSel">'+opts+"</select></div>"+
+    '<button class="pillbtn" id="langApply">Save &amp; apply</button>'+
+    (ui.engine==="google"?' <button class="pillbtn" id="langRefetch" style="background:var(--teal)">🔄 Re-translate saved places</button>':"")+
+    '<div class="note-box">In Google mode the language is set when the map loads, so changing it <b>reloads the page</b> (your data is kept). For guaranteed Japanese in Japan, pick <b>日本語</b>. “Local / native names” shows each place in its own language where possible.</div></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#langApply").onclick=function(){ var v=modal.querySelector("#langSel").value; var changed=v!==appSettings.lang; appSettings.lang=v; save();
+    if(ui.engine==="google"&&changed){ toast("Reloading to apply language…"); setTimeout(function(){ location.reload(); },600); } else { closeModal(); renderAll(); toast("Language set — new searches will use it"); } };
+  if(ui.engine==="google"){ modal.querySelector("#langRefetch").onclick=function(){ closeModal(); refetchAll(); }; } }
+
+function googleModal(){ var connected=ui.engine==="google";
+  openModal('<div class="mh"><div><h2>Connect Google Maps</h2><p>Better search, autocomplete, photos, and accurate hours.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Google Maps API key</label><input id="gkeyIn" placeholder="AIza…" value="'+esc(gkey)+'"></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="gkeySave" style="background:var(--teal)">🟢 '+(connected?"Update key":"Connect")+"</button>"+
+    (connected?'<button class="pillbtn" id="gkeyOff" style="background:#9a3322">↺ Disconnect (use OpenStreetMap)</button>':"")+"</div>"+
+    '<div class="divlbl"><span class="ln"></span>Getting a key (free tier)<span class="ln"></span></div>'+
+    '<ol class="steps"><li>Open the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> and create a project.</li>'+
+    '<li>Enable <b>Maps JavaScript API</b> and <b>Places API</b> (set up billing — Google gives a recurring free credit).</li>'+
+    '<li>Create an <b>API key</b> under Credentials and paste it above.</li><li>Recommended: restrict the key before sharing.</li></ol>'+
+    '<div class="note-box">🔒 Your key is stored only in this browser — never written into the file, exports, or share codes.<br><br>⚠️ Inside this chat preview Google is usually blocked; download the file and open it in your own browser for the full Google experience. If you change the key, reload the page.</div></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#gkeySave").onclick=function(){ var v=modal.querySelector("#gkeyIn").value.trim(); if(!v){ toast("Paste a key first"); return; } gkey=v; Store.set(GKEY_KEY,v); closeModal(); toast("Connecting to Google…"); startEngine("google"); };
+  if(connected) modal.querySelector("#gkeyOff").onclick=function(){ gkey=""; Store.set(GKEY_KEY,""); closeModal(); startEngine("osm"); toast("Back to OpenStreetMap"); }; }
+
+function shareModal(){ var code="WMK1."+btoa(unescape(encodeURIComponent(JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories}))));
+  openModal('<div class="mh"><div><h2>Share “'+esc(state.name)+'”</h2><p>'+state.places.length+' places · send the code; a friend pastes it into “Import from code”.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><textarea id="shareCode" readonly>'+code+'</textarea><button class="pillbtn" id="copyCode">📋 Copy code</button>'+
+    '<p class="hint" style="margin-top:14px">Prefer a file? Use <b>Export this map (JSON)</b> for a full copy or <b>CSV</b> for a spreadsheet — both import back in as a new map.</p></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#copyCode").onclick=function(){ var ta=modal.querySelector("#shareCode"); ta.select(); if(navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function(){toast("Code copied");}); else { document.execCommand("copy"); toast("Code copied"); } }; }
+function importCodeModal(){ openModal('<div class="mh"><div><h2>Import from code</h2><p>Paste a Wandermark code a friend shared.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><textarea id="impCode" placeholder="WMK1.…"></textarea><div style="display:flex;gap:8px;margin-top:10px"><button class="pillbtn" id="impNew" style="background:var(--teal)">🗂️ Import as new map</button><button class="pillbtn" id="impAdd">＋ Add to current map</button></div></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  function parse(){ var raw=modal.querySelector("#impCode").value.trim().replace(/^WMK1\./,""); try{ return JSON.parse(decodeURIComponent(escape(atob(raw)))); }catch(e){ toast("That code looks invalid"); return null; } }
+  modal.querySelector("#impNew").onclick=function(){ var d=parse(); if(!d) return; closeModal(); importWandermarkData(d,true,"Shared map"); };
+  modal.querySelector("#impAdd").onclick=function(){ var d=parse(); if(!d) return; closeModal(); importWandermarkData(d,false); }; }
+function importWandermarkData(d,asNew,fallbackName){
+  if(asNew){ createMapFromData({name:d.name||fallbackName||"Imported map",kind:d.kind||"personal",places:d.places,categories:d.categories}); toast('Imported map: “'+(d.name||fallbackName)+'”'); }
+  else { var n=0; (d.places||[]).forEach(function(p){ p.id=uid(); state.places.push(normalizePlace(p)); n++; });
+    if(d.categories) d.categories.forEach(function(c){ if(!state.categories.some(function(x){return x.id===c.id;})) state.categories.splice(state.categories.length-1,0,c); });
+    renderAll(); if(ui.mapReady&&state.places.length) Engine.fit(state.places); toast("Added "+n+" places to “"+state.name+"”"); } }
+
+/* ===================== export / import files ===================== */
+function download(name,text,type){ var blob=new Blob([text],{type:type||"text/plain"}),u=URL.createObjectURL(blob),a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(u);a.remove();},500); }
+function slug(s){ return (s||"map").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40)||"map"; }
+function exportJSON(){ download("wandermark-"+slug(state.name)+".json",JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories},null,2),"application/json"); toast("JSON exported"); }
+function csvCell(s){ s=(s==null?"":""+s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function exportCSV(){ var head=["name","category","address","lat","lng","hours","website","tags","notes","google_maps_url"];
+  var rows=state.places.map(function(p){ var c=catById(p.categoryId); return [p.name,c.name,p.address,p.lat,p.lng,(p.hours||""),(p.website||""),(p.tags||[]).join("; "),p.notes,gmapsUrl(p)].map(csvCell).join(","); });
+  download("wandermark-"+slug(state.name)+".csv",head.join(",")+"\n"+rows.join("\n"),"text/csv"); toast("CSV exported"); }
+function parseCSV(text){ var rows=[],row=[],cur="",q=false;
+  for(var i=0;i<text.length;i++){ var ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else { if(ch==='"') q=true; else if(ch===","){row.push(cur);cur="";} else if(ch==="\n"||ch==="\r"){ if(ch==="\r"&&text[i+1]==="\n")i++; row.push(cur);cur=""; if(row.length>1||row[0]!=="") rows.push(row); row=[]; } else cur+=ch; } }
+  if(cur!==""||row.length){ row.push(cur); rows.push(row); } return rows; }
+function importCSVAsMap(text,name){ var rows=parseCSV(text); if(!rows.length){ toast("Empty CSV"); return; }
+  var head=rows[0].map(function(h){return h.trim().toLowerCase();}); var idx=function(n){return head.indexOf(n);};
+  var iName=idx("name"),iCat=idx("category"),iAddr=idx("address"),iLat=idx("lat"),iLng=idx("lng"),iHrs=idx("hours"),iWeb=idx("website"),iNotes=idx("notes"),iTags=idx("tags");
+  if(iLat<0) iLat=idx("latitude"); if(iLng<0) iLng=idx("longitude");
+  var cats=freshCats(),places=[],n=0;
+  function ensureCat(nm){ nm=nm||"Other"; for(var i=0;i<cats.length;i++) if(cats[i].name.toLowerCase()===nm.toLowerCase()) return cats[i].id; var id=uid(); cats.splice(cats.length-1,0,{id:id,name:nm,color:PALETTE[cats.length%PALETTE.length],emoji:"📍"}); return id; }
+  for(var r=1;r<rows.length;r++){ var c=rows[r],lat=parseFloat(c[iLat]),lng=parseFloat(c[iLng]); if(isNaN(lat)||isNaN(lng)) continue;
+    places.push({name:iName>=0?c[iName]:"",address:iAddr>=0?c[iAddr]:"",lat:lat,lng:lng,categoryId:ensureCat(iCat>=0?c[iCat]:""),hours:iHrs>=0?c[iHrs]:"",website:iWeb>=0?c[iWeb]:"",notes:iNotes>=0?c[iNotes]:"",tags:iTags>=0?c[iTags]:""}); n++; }
+  if(!n){ toast("No rows with lat/lng found"); return; }
+  createMapFromData({name:name||"Imported CSV",places:places,categories:cats,kind:"personal"}); toast("Imported "+n+" places as a new map"); }
+
+/* ----- Google My Maps: KML / KMZ ----- */
+function xmlEls(parent,tag){ var a=null; try{ a=parent.getElementsByTagNameNS("*",tag); }catch(e){} if(a&&a.length) return a; return parent.getElementsByTagName(tag); }
+function txt(el){ return el?(el.textContent||"").trim():""; }
+function importKMLText(text,fname){ var xml; try{ xml=new DOMParser().parseFromString(text,"application/xml"); }catch(e){ toast("Couldn’t parse KML"); return; }
+  if(xml.getElementsByTagName("parsererror").length){ toast("That file isn’t valid KML"); return; }
+  var docEl=xmlEls(xml,"Document")[0]; var mapName=fname||"Imported map";
+  if(docEl){ var dn=xmlEls(docEl,"name")[0]; if(dn&&txt(dn)) mapName=txt(dn); }
+  var pms=xmlEls(xml,"Placemark"); var cats=freshCats();
+  function ensureCat(nm){ if(!nm) return "other"; for(var i=0;i<cats.length;i++) if(cats[i].name.toLowerCase()===nm.toLowerCase()) return cats[i].id; var id=uid(); cats.splice(cats.length-1,0,{id:id,name:nm,color:PALETTE[cats.length%PALETTE.length],emoji:"📍"}); return id; }
+  var places=[];
+  for(var i=0;i<pms.length;i++){ var pm=pms[i]; var coordEl=xmlEls(pm,"coordinates")[0]; if(!coordEl) continue;
+    var first=txt(coordEl).split(/\s+/)[0].split(","); var lng=parseFloat(first[0]),lat=parseFloat(first[1]); if(isNaN(lat)||isNaN(lng)) continue;
+    var nm=txt(xmlEls(pm,"name")[0]); var desc=txt(xmlEls(pm,"description")[0]).replace(/<[^>]+>/g," ").replace(/&[a-z]+;/g," ").replace(/\s+/g," ").trim();
+    var folder=""; var node=pm.parentNode;
+    while(node && node.nodeType===1){ var ln=(node.localName||node.nodeName||"").toLowerCase(); if(ln==="folder"){ var fn=xmlEls(node,"name")[0]; if(fn){ folder=txt(fn); } break; } node=node.parentNode; }
+    places.push({name:nm||"Untitled",address:"",lat:lat,lng:lng,categoryId:ensureCat(folder),notes:desc.slice(0,300),hours:"",website:"",photoUrl:"",googleUrl:"",placeId:""}); }
+  if(!places.length){ toast("No pinned points found in that file"); return; }
+  createMapFromData({name:mapName,places:places,categories:cats,kind:"personal"}); toast("Imported "+places.length+" places from My Maps"); }
+function loadJSZip(cb){ if(window.JSZip){ cb(); return; } var s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load the KMZ reader (needs internet). Try exporting as KML instead."); }; document.head.appendChild(s); }
+function importKMZ(file){ loadJSZip(function(){ if(!window.JSZip) return;
+  var done=function(buf){ JSZip.loadAsync(buf).then(function(zip){ var name=Object.keys(zip.files).filter(function(n){return /\.kml$/i.test(n);})[0]; if(!name){ toast("No KML inside the KMZ"); return; } zip.files[name].async("string").then(function(t){ importKMLText(t,file.name.replace(/\.kmz$/i,"")); }); }).catch(function(){ toast("Couldn’t read that KMZ"); }); };
+  if(file.arrayBuffer) file.arrayBuffer().then(done); else { var rd=new FileReader(); rd.onload=function(){ done(rd.result); }; rd.readAsArrayBuffer(file); } }); }
+function handleFile(file){ var n=file.name.toLowerCase();
+  if(/\.kmz$/.test(n)){ importKMZ(file); return; }
+  var rd=new FileReader();
+  rd.onload=function(){ var t=rd.result;
+    if(/\.json$/.test(n)){ try{ importWandermarkData(JSON.parse(t),true,file.name.replace(/\.json$/i,"")); }catch(e){ toast("Couldn’t read that JSON"); } }
+    else if(/\.kml$/.test(n)){ importKMLText(t,file.name.replace(/\.kml$/i,"")); }
+    else { importCSVAsMap(t,file.name.replace(/\.csv$/i,"")); } };
+  rd.readAsText(file); }
+
+/* ===================== filters reset / categories all-none ===================== */
+function resetFilters(){ document.getElementById("textFilter").value=""; document.getElementById("radius").value="";
+  document.getElementById("anchorSel").value=""; document.getElementById("openOnly").checked=false; document.getElementById("hoursControls").style.display="none";
+  document.getElementById("dayFilter").value=todayCode(); document.getElementById("timeFilter").value=""; document.getElementById("customTimeWrap").style.display="none"; document.getElementById("customTime").value="";
+  ui.activeCats={}; ui.activeTags={}; ui.activeSmart={}; renderAll(); toast("Filters reset"); }
+function catAll(){ ui.activeCats={}; renderAll(); }
+function catNone(){ state.categories.forEach(function(c){ ui.activeCats[c.id]=false; }); renderAll(); }
+
+/* ===================== view ===================== */
+function setView(v){ ui.view=v; document.getElementById("tabMap").classList.toggle("active",v==="map"); document.getElementById("tabTable").classList.toggle("active",v==="table");
+  document.getElementById("tableView").classList.toggle("on",v==="table"); if(v==="table") renderTable(); else if(ui.mapReady) setTimeout(function(){ Engine.resize(); },60); }
+function closeSidebarMobile(){ document.getElementById("aside").classList.remove("open"); }
+
+/* ===================== init ===================== */
+function wireUI(){
+  var vt=document.getElementById("verTag"); if(vt) vt.textContent="Wandermark v"+WANDERMARK_VERSION;
+  document.getElementById("search").addEventListener("input",function(e){ doSearch(e.target.value.trim()); });
+  document.getElementById("search").addEventListener("focus",function(e){ if(e.target.value.trim().length>=3) doSearch(e.target.value.trim()); });
+  document.addEventListener("click",function(e){ if(!e.target.closest(".search-wrap")) hideResults(); });
+
+  document.getElementById("filterToggle").onclick=function(){ document.getElementById("filterSec").classList.toggle("collapsed"); };
+  var renderSoon=debounce(renderAll,220);
+  ["textFilter","radius","customTime"].forEach(function(id){ document.getElementById(id).addEventListener("input",renderSoon); });
+  document.getElementById("tagMode").onclick=function(){ ui.tagMode=(ui.tagMode==="any"?"all":"any"); renderAll(); };
+  document.getElementById("dayFilter").addEventListener("change",renderAll);
+  document.getElementById("timeFilter").addEventListener("change",function(e){ document.getElementById("customTimeWrap").style.display=(e.target.value==="custom")?"":"none"; renderAll(); });
+  document.getElementById("openOnly").addEventListener("change",function(e){ document.getElementById("hoursControls").style.display=e.target.checked?"":"none"; renderAll(); });
+  document.getElementById("anchorSel").addEventListener("change",function(e){ var v=e.target.value; if(v==="__me") requestGeo(); else if(v==="__custom"){ if(!ui.customAnchor) customAddressModal(); else renderAll(); } else renderAll(); });
+  document.getElementById("geoBtn").onclick=requestGeo;
+  document.getElementById("resetFilters").onclick=resetFilters;
+  document.getElementById("catAll").onclick=catAll; document.getElementById("catNone").onclick=catNone;
+
+  document.getElementById("tabMap").onclick=function(){ setView("map"); };
+  document.getElementById("tabTable").onclick=function(){ setView("table"); };
+  document.getElementById("tvClose").onclick=function(){ setView("map"); };
+  document.getElementById("tvCsv").onclick=exportCSV;
+  document.getElementById("addCatBtn").onclick=categoryModal;
+  document.getElementById("engineBtn").onclick=googleModal;
+  document.getElementById("mapBtn").onclick=mapsModal;
+
+  var menu=document.getElementById("menu");
+  document.getElementById("menuBtn").onclick=function(e){ e.stopPropagation(); menu.classList.toggle("on"); };
+  document.addEventListener("click",function(){ menu.classList.remove("on"); });
+  menu.querySelector(".pop-menu").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; var act=b.getAttribute("data-act"); menu.classList.remove("on");
+    if(act==="maps") mapsModal(); else if(act==="drive") driveModal(); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
+    else if(act==="imp") document.getElementById("fileInput").click(); else if(act==="impcode") importCodeModal();
+    else if(act==="google") googleModal(); else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); });
+  document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
+  document.getElementById("sideToggle").onclick=function(){ document.getElementById("aside").classList.toggle("open"); };
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
+  document.getElementById("dayFilter").value=todayCode();
+}
+function boot(){ wireUI();
+  Store.get(STORE_KEY).then(function(val){ var ok=false;
+    if(val){ try{ var d=JSON.parse(val);
+      if(d&&d.lib&&d.lib.maps&&Object.keys(d.lib.maps).length){ LIB.maps=d.lib.maps; LIB.order=(d.lib.order&&d.lib.order.length)?d.lib.order:Object.keys(d.lib.maps); LIB.activeId=d.lib.activeId; if(d.settings) appSettings=Object.assign({lang:"native"},d.settings); ok=true; }
+      else if(d&&d.places){ var id=newMap("My map","personal"); LIB.maps[id].places=d.places.map(normalizePlace); if(d.categories&&d.categories.length) LIB.maps[id].categories=d.categories; LIB.activeId=id; if(d.settings) appSettings=Object.assign({lang:"native"},d.settings); ok=true; }
+    }catch(e){} }
+    if(!ok || !LIB.activeId || !LIB.maps[LIB.activeId]){ if(!LIB.order.length){ var id2=newMap("My map","personal"); LIB.activeId=id2; } else LIB.activeId=LIB.order[0]; }
+    Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(!m.categories||!m.categories.length) m.categories=freshCats(); if(!m.places) m.places=[]; if(!m.kind) m.kind="personal"; });
+    state=LIB.maps[LIB.activeId];
+    if(!appSettings.drive) appSettings.drive={folderId:"",key:"",auto:false};
+    Store.get(GKEY_KEY).then(function(k){ gkey=k||""; renderMapBtn(); startEngine(gkey?"google":"osm");
+      if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400); }); }); }
+boot();
+})();
+</script>
