@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.0] — Collaborative editing of shared maps
+
+### Changed
+- OAuth scope widened from `drive.file` to full **`drive`**, so a signed-in
+  collaborator can edit **any map they have Drive edit-access to**, not only
+  ones they created. The owner shares the folder as **Editor**; Drive itself
+  enforces who can write what.
+- **Publish / Update on Drive** now appears on every map (including shared ones).
+- **Last-writer-wins**, like Google My Maps. A **●** marks a map with local
+  edits you haven't pushed; a sync won't overwrite a map while it has unpushed
+  edits (push first, then it syncs normally).
+
+### Trade-off (be aware)
+- Full `drive` scope is a "restricted" Google scope, so while the OAuth app is
+  in **testing** it shows an "unverified app" screen — added **test users** can
+  click *Advanced → continue*. Going fully public later would need Google's
+  verification. Fine for a friend group; documented so it's not a surprise.
+
+---
+
 ## [0.8.0] — Drive write-back (save your maps from the app)
 
 ### Added

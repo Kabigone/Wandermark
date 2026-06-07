@@ -2,14 +2,18 @@
   Wandermark — personal, shareable travel maps in a single HTML file.
   Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
 
-  VERSION: 0.8.0
+  VERSION: 0.9.0
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.0  Collaborative editing: with sign-in you can edit ANY shared map you
+           have Drive edit-access to (not just your own) and push changes —
+           last-writer-wins, like Google My Maps. A "●" marks unpushed local
+           edits; sync won't overwrite those until you push. (Uses full Drive
+           scope, so Google shows an "unverified app" screen while in testing.)
     0.8.0  Drive WRITE-BACK: sign in with Google (OAuth Client ID, drive.file)
            and Publish / Update your own maps straight to the shared folder —
-           no manual upload. You can only change maps you published; everyone
-           else's stay read-only. Read-sync won't overwrite your published maps.
+           no manual upload. Read-sync won't overwrite your published maps.
     0.7.1–0.7.3  Drive sync diagnostics: reports the real Google error (API not
            enabled, key not allowed for Drive, folder not shared, referrer
            blocked), warns on API-key/Client-ID mix-ups, friendlier empty-folder
@@ -342,7 +346,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.8.0";
+var WANDERMARK_VERSION="0.9.0";
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -517,8 +521,8 @@ function makePopupNode(p){ var c=catById(p.categoryId);
     '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
     '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
     '<button class="ppsave">Save</button><button class="ppdel">Delete</button></div>';
-  node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); closePopup(); renderAll(); toast("Saved"); };
-  node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
+  node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
+  node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
   return node; }
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
@@ -624,7 +628,8 @@ function onGkeyRejected(){ toast("Google rejected that key. Check it’s valid w
 function onGoogleLoadError(){ toast("Couldn’t load Google here (often blocked inside previews). Download the file and open it in your browser."); startEngine("osm"); }
 
 /* ===================== add place ===================== */
-function addPlace(o){ var p=normalizePlace(o); state.places.push(p); renderAll(); if(ui.view==="map"&&ui.mapReady) Engine.open(p); toast("Added “"+(p.name||"place")+"”"); return p; }
+function markDirty(){ if(state) state.dirty=true; }
+function addPlace(o){ var p=normalizePlace(o); state.places.push(p); markDirty(); renderAll(); if(ui.view==="map"&&ui.mapReady) Engine.open(p); toast("Added “"+(p.name||"place")+"”"); return p; }
 
 /* ===================== search ===================== */
 var resultsEl=document.getElementById("results");
@@ -747,10 +752,10 @@ scrim.addEventListener("click",function(e){ if(e.target===scrim) closeModal(); }
 function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings.drive||{}; var driveWritable=!!(dcfg.folderId&&dcfg.clientId);
   LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.source==="drive"&&!m.mine) synced.push(m); else if(m.kind==="curated") curated.push(m); else personal.push(m); });
   function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=(m.source==="drive")?"☁️ ":(m.kind==="curated"?"⭐ ":"");
-    var acts; if(m.source==="drive"&&!m.mine){ acts='<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
-    else { var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.mine?"⤴ Update on Drive":"⤴ Publish to Drive")+'</button>':"";
-      acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
-    return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.mine?" ✓":"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
+    var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.driveId?(m.dirty?"⤴ Push edits":"⤴ Update on Drive"):"⤴ Publish to Drive")+'</button>':"";
+    var acts; if(m.source==="drive"&&!m.mine){ acts=pub+'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
+    else { acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
+    return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.dirty?' <span style="color:var(--stamp)">●</span>':"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
   var driveOn=!!(dcfg.folderId&&dcfg.key);
   openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="maps-list">'+
@@ -810,7 +815,7 @@ function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2)
 function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Add your OAuth Client ID first (⋯ → Sync with Google Drive)"); return; }
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   loadGIS(function(){
-    if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive.file",
+    if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
       callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
         else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
@@ -819,18 +824,18 @@ function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.
 function driveSaveMap(map,cb){ var fid=appSettings.drive&&appSettings.drive.folderId;
   if(!fid){ toast("Set up a Drive folder first (⋯ → Sync with Google Drive)"); return; }
   ensureDriveToken(function(){ var content=mapToFileJSON(map);
-    if(map.driveId&&map.mine){
+    if(map.driveId){
       fetch("https://www.googleapis.com/upload/drive/v3/files/"+map.driveId+"?uploadType=media&fields=id",
         {method:"PATCH",headers:{Authorization:"Bearer "+driveToken,"Content-Type":"application/json"},body:content})
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.error){ toast("Drive save failed: "+driveErrText(d.error)); return; }
-          toast("Updated “"+map.name+"” on Drive"); if(cb)cb(); }).catch(function(e){ toast("Drive save failed: "+driveErrText(e)); });
+          map.dirty=false; save(); renderAll(); toast("Updated “"+map.name+"” on Drive"); if(cb)cb(); }).catch(function(e){ toast("Drive save failed: "+driveErrText(e)); });
     } else {
       var meta={name:"wandermark-"+slug(map.name)+".json",mimeType:"application/json",parents:[fid]};
       var b="wmk"+Date.now(); var body="--"+b+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(meta)+"\r\n--"+b+"\r\nContent-Type: application/json\r\n\r\n"+content+"\r\n--"+b+"--";
       fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
         {method:"POST",headers:{Authorization:"Bearer "+driveToken,"Content-Type":"multipart/related; boundary="+b},body:body})
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.error||!d.id){ toast("Publish failed: "+driveErrText(d&&d.error)); return; }
-          map.driveId=d.id; map.mine=true; map.source="drive"; save(); renderMapBtn(); renderAll(); toast("Published “"+map.name+"” to Drive — others will see it on their next sync"); if(cb)cb(); })
+          map.driveId=d.id; map.mine=true; map.source="drive"; map.dirty=false; save(); renderMapBtn(); renderAll(); toast("Published “"+map.name+"” to Drive — others will see it on their next sync"); if(cb)cb(); })
         .catch(function(e){ toast("Publish failed: "+driveErrText(e)); }); }
   }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
@@ -843,13 +848,13 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
     var i=0,added=0,updated=0,seen={};
     (function next(){
       if(i>=jsons.length){
-        Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(m.source==="drive"&&!m.mine&&m.driveId&&!seen[m.driveId]){ delete LIB.maps[k]; LIB.order=LIB.order.filter(function(x){return x!==k;}); if(LIB.activeId===k){ setActive(LIB.order[0]||newMap("My map","personal")); } } });
+        Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(m.source==="drive"&&!m.mine&&!m.dirty&&m.driveId&&!seen[m.driveId]){ delete LIB.maps[k]; LIB.order=LIB.order.filter(function(x){return x!==k;}); if(LIB.activeId===k){ setActive(LIB.order[0]||newMap("My map","personal")); } } });
         save(); renderMapBtn(); renderAll(); if(!opts.silent) toast("Drive: "+added+" new, "+updated+" updated"); if(opts.then) opts.then(); return;
       }
       var f=jsons[i++]; seen[f.id]=true;
       driveFetchFile(f.id,key,function(txt){ if(txt){ try{ var data=JSON.parse(txt); var fallbackName=f.name.replace(/\.json$/i,"");
         var existing=null; Object.keys(LIB.maps).forEach(function(k){ if(LIB.maps[k].driveId===f.id) existing=LIB.maps[k]; });
-        if(existing){ if(!existing.mine){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; updated++; } }
+        if(existing){ if(!existing.dirty){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; updated++; } }
         else { var id=uid(); LIB.maps[id]={id:id,name:data.name||fallbackName,kind:data.kind||"personal",source:"drive",driveId:f.id,places:(data.places||[]).map(normalizePlace),categories:(data.categories&&data.categories.length)?data.categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); added++; }
       }catch(e){} } setTimeout(next,80); });
     })();
@@ -868,8 +873,8 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",clientId:"",
     '<li>Paste the folder link + an <b>API key</b> (with the <b>Drive API</b> enabled). Wandermark loads every <b>.json</b> as a map under “☁️ Shared from Drive”.</li></ol>'+
     '<div class="divlbl"><span class="ln"></span>Saving (optional)<span class="ln"></span></div>'+
     '<ol class="steps"><li>Add an <b>OAuth Client ID</b> (Web application; authorized origin <b>https://kabigone.github.io</b>).</li>'+
-    '<li>Then each of your own maps gets a <b>Publish / Update on Drive</b> button (in the 🗂️ maps panel) that signs you in and saves it to the folder — no manual upload.</li></ol>'+
-    '<div class="note-box">You only need <b>edit</b> access to the folder to save into it (the owner shares it with you as Editor). You can only change maps <b>you</b> published; everyone else’s stay read-only. If two people need to edit the same map, keep separate files. Sign-in in “testing” mode expires every few days — just sign in again.</div></div>');
+    '<li>Then every map gets a <b>Publish / Update on Drive</b> button in the 🗂️ panel: it signs you in and saves to the folder — for your own maps and any shared map you can edit. No manual upload.</li></ol>'+
+    '<div class="note-box">With sign-in you can <b>Publish</b> your maps and <b>edit any shared map you have edit access to</b> (the owner shares the folder as <b>Editor</b>). Saves are last-writer-wins — a “●” marks a map with local edits you haven’t pushed yet, and a sync won’t overwrite those until you push. Because editing others’ files needs broad access, Google shows an “unverified app” screen while the app is in testing — click <b>Advanced → continue</b> (only your added test users can do this). Sign-in expires every few days; just sign in again.</div></div>');
   modal.querySelector(".close").onclick=closeModal;
   modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim(); var cidVal=modal.querySelector("#dClient").value.trim();
     if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("The API key box has your Client ID. The API key starts “AIza…”."); return; }
