@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.8] — Sign-in sticks across reloads
+
+### Changed
+- **No more re-clicking "Sign in to Google" on every reload.** A Drive OAuth
+  token only ever lived in memory, so a page refresh always showed the sign-in
+  badge/button again — even though Google itself remembered you. On launch,
+  Wandermark now tries a **silent** re-authentication (no popup; the same
+  no-prompt flow auto-push already used for stale tokens) if you've connected
+  before, so returning with an active Google session just works, and the badge
+  only appears when you genuinely need to act.
+
+---
+
 ## [0.9.7] — Picker "developer key is invalid" fix
 
 ### Fixed

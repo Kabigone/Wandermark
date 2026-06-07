@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.7
+  VERSION: 0.9.8
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.8  Returning sign-ins are now silent: on launch, if you've signed in to
+           Drive before and still have an active Google session, Wandermark
+           quietly re-authenticates in the background (no popup, no click) —
+           so the "🔑 Sign in to Google" badge only shows up when you actually
+           need to act.
     0.9.7  Fixed the folder picker showing "The API developer key is invalid":
            it now also passes a Drive App ID (derived from the OAuth Client
            ID's project number, per Google's own sample) alongside the
@@ -377,7 +382,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.7";
+var WANDERMARK_VERSION="0.9.8";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1231,6 +1236,7 @@ function boot(){ wireUI();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
+      if(appSettings.drive&&appSettings.drive.clientId) trySilentDriveToken(function(){ updateSigninBadge(); });
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }
 boot();
