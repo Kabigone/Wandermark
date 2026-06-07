@@ -57,7 +57,8 @@ rendering            renderAll() and the render* helpers
 pin / address / geo  drop-a-pin, geolocation, geocoded distance anchor
 modals               maps / drive / category / language / google / share / import
 export / import      JSON & CSV; KML/KMZ (Google My Maps)
-Drive sync           syncDrive() + driveListFolder/driveFetchFile (read-only)
+Drive sync           syncDrive() (pull) + driveSaveMap() (push, OAuth) +
+                     scheduleAutoPush()/startDrivePolling() (auto-sync glue)
 filters reset etc.   resetFilters, catAll, catNone
 view                 map vs table tab switching
 init                 wireUI() (event wiring) and boot() (load + migrate + start)

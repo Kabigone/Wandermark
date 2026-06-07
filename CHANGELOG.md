@@ -10,6 +10,30 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.2] — Seamless collaboration (feels like a shared document)
+
+### Added
+- **Auto-push**: once you've signed in, edits to a map already on Drive save
+  themselves to Drive automatically ~12 seconds after you stop editing — no
+  more clicking "Push edits". (Publishing a brand-new map to Drive for the
+  first time is still an explicit action.)
+- **Background pull**: while the app is open (and the tab is visible),
+  Wandermark quietly re-checks the shared Drive folder every couple of minutes
+  so collaborators' changes show up without a manual refresh.
+- **Conflict heads-up**: if someone else edits a shared map while you also have
+  unpushed local edits, you get a toast warning before last-writer-wins would
+  overwrite their changes (or yours).
+
+### Notes
+- Still last-writer-wins, like Google My Maps — these changes make the existing
+  model feel more like editing a live shared document, without changing how
+  conflicts are ultimately resolved.
+- Auto-push only runs once you've signed in during the current session, so
+  there's never a surprise sign-in popup; the manual Publish/Push buttons still
+  work (and sign you in) any time.
+
+---
+
 ## [0.9.1] — Embeddable shared config ("just works" for friends)
 
 ### Added
