@@ -29,12 +29,22 @@ setup see `wandermark-drive-sharing-guide.md`.
   locally falls back to OpenStreetMap, with a "bring your own key" fallback in
   🗂️ Map ▾ → Map style. Some Google features are also blocked inside sandboxed
   previews — use a real browser, ideally the hosted copy (see Roadmap).
+- **Connecting to shared maps:** 🗂️ Map ▾ ("Your maps") is the front door —
+  sign in there, then pick the shared folder visually with Google's real
+  folder picker (no copying a link out of Drive). The old manual "paste a
+  folder link + key" flow still exists as a fallback in the "Advanced: Drive
+  connection settings" panel, for troubleshooting or pointing at a folder by
+  hand.
 
 ## No external dependencies except via CDN
 
 The only third-party code is loaded from `cdnjs.cloudflare.com`: **Leaflet**
 (the OSM map), **JSZip** (lazy-loaded only when importing a `.kmz`), and Google
-fonts. The Google Maps JS API loads from Google when you connect a key.
+fonts. From Google itself: the **Maps JS API** (when you're in Google mode),
+**Identity Services** (`accounts.google.com/gsi/client`, for Drive sign-in),
+and the **Picker API** (`apis.google.com/js/api.js`, lazy-loaded only when a
+signed-in user taps "choose folder from Drive" — a friendlier way to pick a
+shared folder than pasting a link).
 
 ---
 
@@ -137,7 +147,7 @@ LIB = {
 ```js
 appSettings = {
   lang: "native" | "en" | "ja" | ...,         // display language
-  drive: { folderId, key, auto }               // Drive sync config
+  drive: { folderId, folderName, key, clientId, auto }  // Drive sync config
 }
 ```
 

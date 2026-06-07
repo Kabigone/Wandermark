@@ -3,10 +3,17 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.5
+  VERSION: 0.9.6
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.6  "Your maps" (🗂️ Map ▾) is now the home for getting connected: a
+           prominent sign-in button when you're not signed in, a "choose shared
+           folder from Drive" button that opens Google's real folder picker (no
+           more pasting links), and a header badge that says "Sign in to
+           Google" whenever you aren't. "Sync with Google Drive" is gone from
+           the ⋯ menu — it's now an "Advanced: Drive connection settings" link
+           tucked at the bottom of Your maps, for troubleshooting only.
     0.9.5  Map style (Google Maps / OpenStreetMap) is now a simple toggle inside
            "Your maps" (🗂️ Map ▾) — no API key shown or asked for, since the
            site already has one built in. "Bring your own key" is now a small
@@ -284,6 +291,7 @@
     <button class="btn tab mobile-toggle" id="sideToggle" title="Places & filters">☰</button>
     <div class="brand"><span class="glyph">🧭</span><h1>Wandermark</h1></div>
     <button class="btn" id="mapBtn" title="Switch / manage maps">🗂️ Map ▾</button>
+    <button class="btn" id="signinBadge" title="Sign in to see and edit shared maps" style="display:none;background:rgba(224,138,47,.18);border-color:#e08a2f;color:#9a5a14;font-weight:700">🔑 Sign in to Google</button>
     <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off"><div class="results" id="results"></div></div>
     <div class="hbtns">
       <div class="seg"><button class="btn tab active" id="tabMap">🗺️ Map</button><button class="btn tab" id="tabTable">▦ Table</button></div>
@@ -291,7 +299,6 @@
         <button class="btn" id="menuBtn">⋯</button>
         <div class="pop-menu">
           <button data-act="maps"><span class="mi">🗂️</span> Switch / manage maps</button>
-          <button data-act="drive"><span class="mi">☁️</span> Sync with Google Drive</button>
           <button data-act="lang"><span class="mi">🌐</span> Display language</button>
           <div class="sep"></div>
           <button data-act="share"><span class="mi">🔗</span> Share this map (code)</button>
@@ -365,7 +372,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.5";
+var WANDERMARK_VERSION="0.9.6";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -397,7 +404,7 @@ var DAYORDER=[["Mo","Mon"],["Tu","Tue"],["We","Wed"],["Th","Thu"],["Fr","Fri"],[
 var LANGS=[["native","Local / native names"],["en","English"],["ja","日本語 (Japanese)"],["ko","한국어 (Korean)"],["zh-CN","中文 (Chinese)"],["fr","Français"],["es","Español"],["de","Deutsch"],["it","Italiano"]];
 
 var STORE_KEY="wandermark:data", GKEY_KEY="wandermark:gkey";
-var appSettings={lang:"native",drive:{folderId:"",key:"",clientId:"",auto:false}};
+var appSettings={lang:"native",drive:{folderId:"",folderName:"",key:"",clientId:"",auto:false}};
 var LIB={activeId:null,order:[],maps:{}};
 var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
 var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null};
@@ -678,7 +685,7 @@ var doSearch=debounce(function(q){ if(!q||q.length<3){ hideResults(); return; } 
       resultsEl.appendChild(d); }); }); },420);
 
 /* ===================== rendering ===================== */
-function renderAll(){ renderCatChips(); renderSmartFilters(); renderTagFilter(); renderAnchorSel(); renderPlaces(); updateFilterBadge(); if(ui.mapReady&&Engine) Engine.refresh(getFiltered()); if(ui.view==="table") renderTable(); save(); }
+function renderAll(){ renderCatChips(); renderSmartFilters(); renderTagFilter(); renderAnchorSel(); renderPlaces(); updateFilterBadge(); updateSigninBadge(); if(ui.mapReady&&Engine) Engine.refresh(getFiltered()); if(ui.view==="table") renderTable(); save(); }
 function renderSmartFilters(){ var wrap=document.getElementById("smartWrap"),el=document.getElementById("smartChips");
   if(!mapHasHours()){ wrap.style.display="none"; el.innerHTML=""; for(var k in ui.activeSmart) delete ui.activeSmart[k]; return; }
   wrap.style.display=""; el.innerHTML="";
@@ -789,6 +796,18 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
     else { acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
     return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.dirty?' <span style="color:var(--stamp)">●</span>':"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
   var driveOn=!!(dcfg.folderId&&dcfg.key);
+  var signedIn=!!(driveToken&&Date.now()<driveTokenExp), hasClient=!!dcfg.clientId;
+  var connectSection="";
+  if(hasClient){
+    connectSection+="<div class=\"divlbl\"><span class=\"ln\"></span>Google Drive — shared maps<span class=\"ln\"></span></div>";
+    if(!signedIn){
+      connectSection+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding:12px;border:1px solid var(--teal);border-radius:10px;background:#eaf6f4"><button class="pillbtn" id="mSignIn" style="background:var(--teal)">🔑 Sign in to Google</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Lets you see and edit shared maps with friends, and publish your own — one tap, once. Wandermark keeps you signed in after that.</span></div>';
+    } else {
+      connectSection+='<div class="note-box" style="background:#e3f3e6;border-color:#bcdfc2;margin-top:0;margin-bottom:10px">✓ Signed in to Google — you can publish your maps and edit shared ones.</div>';
+      if(dcfg.folderId) connectSection+='<p class="hint" style="margin-top:0">📁 Connected to <b>'+esc(dcfg.folderName||"a shared folder")+'</b> — its maps appear below under “☁️ Shared from Drive”. <a href="#" id="mChangeFolder">Change folder</a></p>';
+      else connectSection+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px"><button class="pillbtn" id="mPickFolder" style="background:var(--teal)">📁 Choose shared folder from Drive</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Pick the folder a friend shared with you — its maps show up below automatically, kept in sync.</span></div>';
+    }
+  }
   var styleSection="<div class=\"divlbl\"><span class=\"ln\"></span>Map style<span class=\"ln\"></span></div>"+
     '<div class="seg" style="display:inline-flex;margin-bottom:6px">'+
     '<button class="btn tab'+(ui.engine==="google"?" active":"")+'" id="engGoogle">🟢 Google Maps</button>'+
@@ -796,7 +815,7 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
     '<p class="hint" style="margin-top:0">Google Maps gives better search, autocomplete, photos, and accurate hours.'+
     ((gkeyBlocked||!CONFIG.apiKey)?' Having trouble connecting? <a href="#" id="ownKeyLink">Use your own Google Maps API key</a>.':"")+'</p>';
   openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><div class="maps-list">'+
+    '<div class="mb">'+connectSection+'<div class="maps-list">'+
     (personal.length?'<div class="grouphdr">My maps</div>'+rows(personal):"")+
     (curated.length?'<div class="grouphdr">Curated / imported lists</div>'+rows(curated):"")+
     (synced.length?'<div class="grouphdr">☁️ Shared from Drive</div>'+rows(synced):"")+
@@ -805,13 +824,20 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
     (driveOn?'<button class="ghostbtn" id="driveRefresh" style="margin-bottom:6px">↻ Refresh maps from Drive</button>':"")+
     "<div class=\"divlbl\"><span class=\"ln\"></span>New map<span class=\"ln\"></span></div>"+
     '<div class="row2"><div class="field" style="flex:1;margin:0"><input id="newMapName" placeholder="e.g. Kyoto, Lisbon, Tabelog Ramen…"></div><button class="pillbtn" id="newMapGo" style="margin:0">＋ Create</button></div>'+
-    '<p class="hint" style="margin-top:12px">Each KML/KMZ or Wandermark file you import becomes its own map. To pull a whole folder of maps automatically, use <b>☁️ Sync with Google Drive</b> in the ⋯ menu.</p>'+
+    '<p class="hint" style="margin-top:12px">Each KML/KMZ or Wandermark file you import becomes its own map.</p>'+
     styleSection+
+    '<p class="hint" style="margin-top:14px;text-align:right"><a href="#" id="mAdvanced" style="color:var(--muted);font-size:11.5px">⚙ Advanced: Drive connection settings</a></p>'+
     "</div>");
   modal.querySelector(".close").onclick=closeModal;
   modal.querySelector("#engGoogle").onclick=function(){ if(ui.engine==="google") return; if(!gkey){ toast("No Google Maps connection available — try “Use your own API key” below"); return; } closeModal(); startEngine("google"); };
   modal.querySelector("#engOSM").onclick=function(){ if(ui.engine==="osm") return; closeModal(); startEngine("osm"); };
   var okl=modal.querySelector("#ownKeyLink"); if(okl) okl.onclick=function(e){ e.preventDefault(); ownKeyModal(); };
+  var madv=modal.querySelector("#mAdvanced"); if(madv) madv.onclick=function(e){ e.preventDefault(); driveModal(); };
+  function pickedFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
+    toast("Connected to “"+(name||"folder")+"” — syncing…"); syncDrive({then:function(){ mapsModal(); }}); }
+  var msi=modal.querySelector("#mSignIn"); if(msi) msi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); mapsModal(); }); };
+  var mpf=modal.querySelector("#mPickFolder"); if(mpf) mpf.onclick=function(){ pickDriveFolder(pickedFolder); };
+  var mcf=modal.querySelector("#mChangeFolder"); if(mcf) mcf.onclick=function(e){ e.preventDefault(); pickDriveFolder(pickedFolder); };
   if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
   modal.querySelectorAll("[data-go]").forEach(function(el){ el.onclick=function(){ switchMap(el.getAttribute("data-go")); }; });
   modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-ren")]; var nm=prompt("Rename map:",m.name); if(nm!=null){ m.name=nm.trim()||m.name; save(); renderMapBtn(); mapsModal(); } }; });
@@ -855,14 +881,32 @@ var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
 function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
   var s=document.createElement("script"); s.src="https://accounts.google.com/gsi/client"; s.async=true; s.defer=true;
   s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load Google sign-in (only works on the hosted https site, not a local file)."); }; document.head.appendChild(s); }
-function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Add your OAuth Client ID first (⋯ → Sync with Google Drive)"); return; }
+function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   loadGIS(function(){
     if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
         else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
     pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
+/* ----- Google Drive folder picker (browse & pick visually, no link copy/paste) ----- */
+var pickerLoaded=false;
+function loadPicker(cb){ if(pickerLoaded&&window.google&&google.picker){ cb(); return; }
+  function ready(){ pickerLoaded=true; cb(); }
+  if(window.gapi&&gapi.load){ gapi.load("picker",{callback:ready}); return; }
+  var s=document.createElement("script"); s.src="https://apis.google.com/js/api.js"; s.async=true; s.defer=true;
+  s.onload=function(){ gapi.load("picker",{callback:ready}); };
+  s.onerror=function(){ toast("Couldn’t load Google’s folder picker — use “Advanced” to paste a folder link instead."); };
+  document.head.appendChild(s); }
+function pickDriveFolder(cb){ ensureDriveToken(function(){ loadPicker(function(){
+  var view=new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true).setMode(google.picker.DocsViewMode.LIST);
+  new google.picker.PickerBuilder().setOAuthToken(driveToken).setDeveloperKey(CONFIG.apiKey||appSettings.drive.key||"")
+    .addView(view).setTitle("Choose the shared maps folder")
+    .setCallback(function(data){ if(data.action===google.picker.Action.PICKED){ var doc=data.docs[0]; cb(doc.id,doc.name); } })
+    .build().setVisible(true); }); }); }
+function updateSigninBadge(){ var b=document.getElementById("signinBadge"); if(!b) return;
+  var d=appSettings.drive||{}; var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
+  b.style.display=(d.clientId&&!signedIn)?"":"none"; }
 function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.kind==="curated"?"curated":"personal"),places:map.places,categories:map.categories}); }
 
 /* ----- seamless sync: auto-push edits quietly, and warn before clobbering others' changes -----
@@ -883,7 +927,7 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
     client.requestAccessToken({prompt:"none"}); }); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
-  toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open ⋯ → Sync with Google Drive and tap “Sign in to Google” to push them."); }
+  toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }
 function scheduleAutoPush(map){ if(!map||!map.driveId) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
   autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; if(!map.dirty) return;
@@ -893,7 +937,7 @@ function scheduleAutoPush(map){ if(!map||!map.driveId) return; var id=map.id;
   },12000); }
 
 function driveSaveMap(map,cb,opts){ opts=opts||{}; var fid=appSettings.drive&&appSettings.drive.folderId;
-  if(!fid){ if(!opts.silent) toast("Set up a Drive folder first (⋯ → Sync with Google Drive)"); return; }
+  if(!fid){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }
   function fail(prefix,err){ var msg=prefix+driveErrText(err);
     if(opts.silent){ var now=Date.now(); if(!map._lastSaveErrToast||now-map._lastSaveErrToast>120000){ map._lastSaveErrToast=now; toast(msg); } }
     else toast(msg); }
@@ -924,7 +968,7 @@ function startDrivePolling(){
   document.addEventListener("visibilitychange",function(){ if(!document.hidden) pollDriveIfDue(45000); });
   window.addEventListener("focus",function(){ pollDriveIfDue(45000); }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
-  if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (⋯ → Sync with Google Drive)"); return; }
+  if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }
   lastDriveSyncAt=Date.now();
   if(!opts.silent) toast("Syncing maps from Drive…");
   driveListFolder(fid,key,function(files,err){
@@ -952,35 +996,24 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
     })();
   });
 }
-function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",clientId:"",auto:false};
-  var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
-  var signInRow=!d.clientId?"":(signedIn
-    ?'<div class="note-box" style="background:#e3f3e6;border-color:#bcdfc2;margin-top:0;margin-bottom:14px">✓ <b>Signed in to Google</b> — you can publish your maps and edit any shared map you have access to. Wandermark will try to keep you signed in automatically; if it ever can’t, it’ll show a clear heads-up here.</div>'
-    :'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:12px;border:1px solid var(--teal);border-radius:10px;background:#eaf6f4"><button class="pillbtn" id="dSignIn" style="background:var(--teal)">🔑 Sign in to Google</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">One tap, once — lets you publish your maps and edit shared ones. After that, Wandermark keeps you signed in automatically in the background.</span></div>');
-  openModal('<div class="mh"><div><h2>Sync with Google Drive</h2><p>Read a shared folder of maps — and (optionally) save your own back to it.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb">'+signInRow+
+function driveModal(){ var d=appSettings.drive||{folderId:"",folderName:"",key:"",clientId:"",auto:false};
+  openModal('<div class="mh"><div><h2>Drive connection settings</h2><p>Advanced / troubleshooting — most people never need this. Sign-in and folder selection live in 🗂️ Map ▾.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb">'+
     '<div class="field"><label>Shared folder link or ID</label><input id="dFolder" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.folderId)+'"></div>'+
     '<div class="field"><label>Drive API key — for reading (starts “AIza…”)</label><input id="dKey" placeholder="AIza… (Drive API enabled)" value="'+esc(d.key||"")+'"></div>'+
     '<div class="field"><label>OAuth Client ID — for saving (ends “apps.googleusercontent.com”)</label><input id="dClient" placeholder="…apps.googleusercontent.com" value="'+esc(d.clientId||"")+'"></div>'+
     '<label class="checkrow"><input type="checkbox" id="dAuto"'+(d.auto?" checked":"")+'> Auto-sync every time I open Wandermark</label>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="dSync" style="background:var(--teal)">↻ Save settings &amp; sync now</button>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="dSync" style="background:var(--teal)">↻ Save &amp; sync now</button>'+
     ((d.folderId||d.key||d.clientId)?'<button class="pillbtn" id="dOff" style="background:#9a3322">Disconnect</button>':"")+"</div>"+
-    '<div class="divlbl"><span class="ln"></span>Reading (everyone)<span class="ln"></span></div>'+
-    '<ol class="steps"><li>Put map files in one Drive folder; share it <b>Anyone with the link → Viewer</b>.</li>'+
-    '<li>Paste the folder link + an <b>API key</b> (with the <b>Drive API</b> enabled). Wandermark loads every <b>.json</b> as a map under “☁️ Shared from Drive”.</li></ol>'+
-    '<div class="divlbl"><span class="ln"></span>Saving (optional)<span class="ln"></span></div>'+
-    '<ol class="steps"><li>Add an <b>OAuth Client ID</b> (Web application; authorized origin <b>https://kabigone.github.io</b>).</li>'+
-    '<li>Then every map gets a <b>Publish / Update on Drive</b> button in the 🗂️ panel: it signs you in and saves to the folder — for your own maps and any shared map you can edit. No manual upload.</li></ol>'+
-    '<div class="note-box">With sign-in you can <b>Publish</b> your maps and <b>edit any shared map you have edit access to</b> (the owner shares the folder as <b>Editor</b>). Once you’ve signed in, edits to a map already on Drive <b>auto-save</b> a few seconds after you stop typing — no need to click Push, it just feels like editing a shared document. Wandermark also quietly checks Drive every couple minutes for others’ changes. It’s still last-writer-wins, like Google My Maps — a “●” marks a map with edits not yet on Drive, and if someone else changes a map while you’re mid-edit, you’ll get a heads-up toast before pushing would overwrite their work. Because editing others’ files needs broad access, Google shows an “unverified app” screen while the app is in testing — click <b>Advanced → continue</b> (only your added test users can do this). Sign-in expires every few days; just sign in again.</div></div>');
+    '<div class="note-box">Normally you never touch this: the site already has a built-in folder connection and key. Use this panel only to point at a <b>different</b> folder by hand (e.g. paste a link instead of using the picker), to fix a misconfigured key, or to fully disconnect. To <b>sign in</b> or <b>choose a folder</b> the easy way, close this and use 🗂️ Map ▾ instead. It’s still last-writer-wins, like Google My Maps — a “●” marks a map with edits not yet on Drive.</div></div>');
   modal.querySelector(".close").onclick=closeModal;
-  var si=modal.querySelector("#dSignIn"); if(si) si.onclick=function(){
-    ensureDriveToken(function(){ toast("Signed in to Google ✓"); closeModal(); driveModal(); }); };
   modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim(); var cidVal=modal.querySelector("#dClient").value.trim();
     if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("The API key box has your Client ID. The API key starts “AIza…”."); return; }
     if(cidVal && /^AIza/i.test(cidVal)){ toast("The Client ID box has an API key. The Client ID ends “apps.googleusercontent.com”."); return; }
-    appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:keyVal,clientId:cidVal,auto:modal.querySelector("#dAuto").checked}; save();
+    var fid=driveExtractId(modal.querySelector("#dFolder").value);
+    appSettings.drive={folderId:fid,folderName:(fid!==d.folderId?"":d.folderName),key:keyVal,clientId:cidVal,auto:modal.querySelector("#dAuto").checked}; save();
     if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and an API key"); return; } closeModal(); syncDrive({}); };
-  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",key:"",clientId:"",auto:false}; driveToken=""; save(); closeModal(); toast("Drive disconnected (synced maps kept)"); }; }
+  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false}; driveToken=""; save(); closeModal(); updateSigninBadge(); toast("Drive disconnected (synced maps kept)"); }; }
 
 function categoryModal(){ var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
     return '<div class="catrow" data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span><span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span></div>'; }).join("");
@@ -1159,12 +1192,13 @@ function wireUI(){
   document.getElementById("tvCsv").onclick=exportCSV;
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
+  document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); mapsModal(); }); };
 
   var menu=document.getElementById("menu");
   document.getElementById("menuBtn").onclick=function(e){ e.stopPropagation(); menu.classList.toggle("on"); };
   document.addEventListener("click",function(){ menu.classList.remove("on"); });
   menu.querySelector(".pop-menu").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; var act=b.getAttribute("data-act"); menu.classList.remove("on");
-    if(act==="maps") mapsModal(); else if(act==="drive") driveModal(); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
+    if(act==="maps") mapsModal(); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
     else if(act==="imp") document.getElementById("fileInput").click(); else if(act==="impcode") importCodeModal();
     else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); });
   document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
@@ -1181,14 +1215,14 @@ function boot(){ wireUI();
     if(!ok || !LIB.activeId || !LIB.maps[LIB.activeId]){ if(!LIB.order.length){ var id2=newMap("My map","personal"); LIB.activeId=id2; } else LIB.activeId=LIB.order[0]; }
     Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(!m.categories||!m.categories.length) m.categories=freshCats(); if(!m.places) m.places=[]; if(!m.kind) m.kind="personal"; });
     state=LIB.maps[LIB.activeId];
-    if(!appSettings.drive) appSettings.drive={folderId:"",key:"",clientId:"",auto:false};
-    else appSettings.drive=Object.assign({folderId:"",key:"",clientId:"",auto:false},appSettings.drive);
+    if(!appSettings.drive) appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false};
+    else appSettings.drive=Object.assign({folderId:"",folderName:"",key:"",clientId:"",auto:false},appSettings.drive);
     // Embedded shared credentials (CONFIG) fill in anything the person hasn't set themselves.
     if(!appSettings.drive.key && CONFIG.apiKey) appSettings.drive.key=CONFIG.apiKey;
     if(!appSettings.drive.folderId && CONFIG.driveFolderId) appSettings.drive.folderId=CONFIG.driveFolderId;
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
-    Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); startEngine(gkey?"google":"osm");
+    Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }
 boot();

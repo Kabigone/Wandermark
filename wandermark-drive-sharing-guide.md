@@ -40,33 +40,31 @@ Wandermark can now read a whole Drive folder and turn every map file in it into
 a map automatically. This is the easiest way to share a *directory* of maps:
 you maintain the folder, everyone else just opens the app.
 
-**One-time setup (each person):**
-1. Owner: put your map JSON files in one Drive folder and share it
-   **"Anyone with the link → Viewer."**
-2. Owner: copy the folder's link (the `…/folders/XXXX` URL).
-3. Each person: in Wandermark, **⋯ menu → ☁️ Sync with Google Drive**, paste the
-   folder link and a **Google API key with the Drive API enabled**, tick
-   *Auto-sync on open* if you like, and hit **Save & sync now**.
+**One-time setup (each person), all from 🗂️ Map ▾ ("Your maps") — that's the
+front door for this:**
+1. Owner: put your map JSON files in one Drive folder and share it with the
+   group as **Editor** (so everyone can publish/update their own maps too).
+2. Each person: open **🗂️ Map ▾**, tap **🔑 Sign in to Google**, then
+   **📁 Choose shared folder from Drive** — Google's own folder picker opens so
+   you can browse and click the folder, no copying links out of Drive.
 
 After that, every map in the folder shows up under **"☁️ Shared from Drive"** in
-the 🗂️ map menu, and refreshes whenever you sync. Change a file in the folder and
-everyone gets the update on their next open. No downloading, no importing.
+🗂️ Map ▾, and refreshes automatically. Change a file in the folder (or edit a
+shared map right in the app, once you're signed in) and everyone gets the
+update without downloading or importing anything — see "Can we all edit the
+same map together?" below, because the answer is now **yes**.
 
 **Good to know:**
-- This path is **read-only** in the browser — synced maps can't be edited in
-  place (use *Copy to my maps* to make an editable local copy). Saving edits
-  *back* to Drive automatically would require Google sign-in **and** hosting the
-  app at a fixed URL; that's a bigger build (happy to do it if you host it).
-- The **API key** here is a *Drive* key. It can be the same Google Cloud project
-  as your Maps key, but the **Drive API must be enabled** on it. If you open the
-  app as a local file, use a key that isn't restricted by website (referrer), or
-  host the app and restrict the key to that host.
-- The folder must be shared **Anyone with the link**, or the key (which isn't
-  signed in as anyone) can't read it.
-
-> So the realistic split today: **loading is automatic** (folder → maps), and
-> **saving** is still you (owner) dropping/replacing a JSON in the folder — until
-> we add hosted sign-in for write-back.
+- The hosted copy ([kabigone.github.io/Wandermark](https://kabigone.github.io/Wandermark/))
+  has a working Drive connection and key built in — most people never touch a
+  key at all. The picker needs you to be signed in and the app hosted at a
+  fixed URL (OAuth doesn't work from a double-clicked local file).
+- If you ever do need to point at a folder by hand (e.g. a different folder, or
+  troubleshooting), there's a manual "paste a link + key" fallback in
+  **🗂️ Map ▾ → ⚙ Advanced: Drive connection settings** — most people will never
+  need to open it.
+- The folder needs to be shared with the group (at least **Viewer** to read;
+  **Editor** if you want them to publish/edit maps back to it too).
 
 ---
 
@@ -114,35 +112,34 @@ spreadsheet; import the CSV the same way.
 
 ## "Can we all edit the same map together?"
 
-Honestly: not live, and not without more machinery. With Drive, the realistic
-workflow is **manual sync**:
+Yes, once everyone's signed in (🗂️ Map ▾ → 🔑 Sign in to Google) and the folder
+is shared as **Editor**: edits to a shared map auto-push to Drive a few seconds
+after you stop typing, and the app quietly re-checks Drive in the background (and
+right away when you switch back to the tab) so others' changes show up without a
+manual refresh. It feels like a shared document.
 
-1. One person is the "owner" of, say, `tokyo.json`.
-2. They edit in the app, **Export JSON**, and **replace** the file in Drive.
-3. Everyone else re-downloads and re-imports to get the update.
-
-This works fine for a small group, but be aware:
-- **No merging.** If two people edit at the same time, whoever uploads last
-  wins, and the other's changes are lost.
-- It's a snapshot exchange, not real-time collaboration.
-
-If you later want true shared editing (everyone adds to one map at once), that
-needs a small backend — a tiny serverless database or something like Firebase —
-which is a bigger project than a single HTML file. Happy to build toward that if
-the manual flow gets annoying.
+Two things to know, both **by design, like Google My Maps**:
+- **Last-writer-wins, no merging.** If two people edit the same map at the same
+  moment, whoever's change reaches Drive last "wins" — you'll get a heads-up
+  toast if that's about to happen to your unsaved edits.
+- **No true real-time co-editing** (you won't see someone else's cursor as they
+  type) — that would need a small backend (a serverless database, Firebase,
+  etc.), a much bigger project than a single HTML file.
 
 ---
 
-## The Google Maps API key — keep it personal
+## The Google Maps API key — usually nothing to think about
 
-- The key is **per person**. Each friend enters their own key in
-  **🗺️ engine button → Connect Google Maps**.
-- It's stored only in that person's browser. It is **never** written into
-  `wandermark.html`, into exports, or into share codes.
-- **Do not put your key in the shared Drive folder.** If someone needs Google
-  search/photos, they get their own free key (Google's free tier is generous for
-  personal use), or you skip it entirely — the app works fully in keyless
-  **OpenStreetMap** mode for viewing and editing places.
+- The hosted copy already has a shared, referrer-restricted key built in, so
+  Google Maps mode "just works" there — nobody needs to find, paste, or manage
+  a key. **🗺️ Map style** in 🗂️ Map ▾ is just an OpenStreetMap/Google toggle.
+- **"Bring your own key"** only shows up as a small fallback link in that same
+  panel, and only if the built-in connection fails (e.g. you're running the
+  file locally rather than from the website). If you do enter your own, it's
+  stored only in your browser — **never** written into `wandermark.html`, into
+  exports, or into share codes. Don't put a key in the shared Drive folder.
+- No key at all? The app still works fully in keyless **OpenStreetMap** mode
+  for viewing and editing places.
 
 ---
 
@@ -163,10 +160,10 @@ folder like any other map.
 ## A ready-to-paste README for the shared folder
 
 > **Wandermark — quick start**
-> 1. Download `wandermark.html` from this folder and open it (double-click).
-> 2. (Optional) Connect your own Google Maps key via the green map button for
->    better search & photos. It stays on your computer.
-> 3. To load a city map: ⋯ menu → Import file → pick a `.json` from the `maps/`
->    folder. Switch between maps with the 🗂️ button at the top.
-> 4. To share your version back: ⋯ menu → Export this map (JSON), and replace the
->    file in `maps/`.
+> 1. Open the app at its hosted URL (or download `wandermark.html` and
+>    double-click it — works offline-ish in OpenStreetMap mode).
+> 2. Tap **🗂️ Map ▾** and **🔑 Sign in to Google**, then **📁 Choose shared
+>    folder from Drive** to connect — its maps appear automatically.
+> 3. Switch between maps, or copy a shared one to edit, all from **🗂️ Map ▾**.
+> 4. Editing a shared map auto-saves back to Drive once you're signed in — no
+>    exporting or replacing files needed.

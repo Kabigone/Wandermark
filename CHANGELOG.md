@@ -10,6 +10,34 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.6] — "Your maps" is the front door for shared maps
+
+### Changed
+- **Sign-in and folder setup moved to 🗂️ Map ▾ ("Your maps")**, since that's
+  where the point of all this — using shared maps — actually lives. It now
+  opens with a **🔑 Sign in to Google** button if you aren't connected, or a
+  ✓ status line plus your connected folder if you are. **"Sync with Google
+  Drive" is gone from the ⋯ menu** — it's not something most people should ever
+  need to think about.
+- **A header badge** ("🔑 Sign in to Google") now shows up front whenever
+  Drive sign-in is available but you haven't connected — so a first-time
+  friend knows immediately that there's a shared world of maps to unlock,
+  rather than only ever seeing their own empty map.
+- **Choosing a folder no longer means copying a link out of Drive.** A new
+  "📁 Choose shared folder from Drive" button opens Google's real folder
+  picker (Picker API) — browse and click, like picking a folder in any other
+  Drive-integrated app. Manually pasting a folder link still works as a
+  fallback in the new **Advanced: Drive connection settings** panel (the old
+  "Sync with Google Drive" modal, demoted to troubleshooting-only and linked
+  quietly from the bottom of Your maps).
+
+### Added
+- New external script: Google's Picker API (`apis.google.com/js/api.js`,
+  loaded lazily only when you tap "choose folder"), alongside the existing
+  Google Identity Services script — see CLAUDE.md for the updated allowlist.
+
+---
+
 ## [0.9.5] — Google Maps "just works"; no keys to look at
 
 ### Changed

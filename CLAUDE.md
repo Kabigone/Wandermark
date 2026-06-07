@@ -35,8 +35,10 @@ the file in a browser. It's hosted on GitHub Pages and shared with friends.
 
 1. **Keep it a single self-contained file.** No build tooling, no new runtime deps.
    The only external `<script>`s are: Leaflet + JSZip from `cdnjs.cloudflare.com`,
-   Google Maps JS from Google, and Google Identity Services from
-   `accounts.google.com`. Don't add npm/bundlers.
+   Google Maps JS from Google, Google Identity Services from
+   `accounts.google.com`, and Google's Picker API (`apis.google.com/js/api.js`,
+   lazy-loaded only when a signed-in user taps "choose folder from Drive").
+   Don't add npm/bundlers.
 
 2. **Validate the inline JS after every edit.** The script is plain ES5-style JS in
    one `<script>` block. Extract it and run `node --check`:
