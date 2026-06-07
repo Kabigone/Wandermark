@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.3] — Auto-push doesn't fail silently on stale sign-ins
+
+### Fixed
+- Sign-in tokens expire (every ~50 min, and sessions lapse between visits —
+  especially noticeable on phones). Previously, if auto-push found no valid
+  token it just... did nothing, with no feedback — edits sat unsynced and
+  looked exactly like data loss. Now it first tries a **silent** Google
+  re-sign-in (no popup; succeeds automatically if you have an active Google
+  session and previously consented), and if that's genuinely not possible,
+  shows a clear "your edits aren't reaching Drive — tap Update on Drive to
+  sign in" toast (rate-limited so it isn't naggy).
+
+---
+
 ## [0.9.2] — Seamless collaboration (feels like a shared document)
 
 ### Added
