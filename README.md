@@ -23,9 +23,12 @@ setup see `wandermark-drive-sharing-guide.md`.
 
 - **Locally:** double-click `wandermark.html`. Everything works in keyless
   OpenStreetMap mode; data persists in the browser's `localStorage`.
-- **Google mode / Drive sync:** needs API keys (entered in-app, stored locally).
-  Some Google features are blocked inside sandboxed previews — use a real
-  browser, ideally a hosted copy (see Roadmap).
+- **Google mode / Drive sync:** the hosted copy embeds a shared, referrer-
+  restricted key (`CONFIG.apiKey`) so this just works there — no setup. It only
+  works on the hosted origin, though (referrer-restricted); running the file
+  locally falls back to OpenStreetMap, with a "bring your own key" fallback in
+  🗂️ Map ▾ → Map style. Some Google features are also blocked inside sandboxed
+  previews — use a real browser, ideally the hosted copy (see Roadmap).
 
 ## No external dependencies except via CDN
 

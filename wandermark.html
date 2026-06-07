@@ -1,11 +1,17 @@
 <!--
   Wandermark — personal, shareable travel maps in a single HTML file.
-  Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
+  Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
+  bring your own).
 
-  VERSION: 0.9.4
+  VERSION: 0.9.5
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.5  Map style (Google Maps / OpenStreetMap) is now a simple toggle inside
+           "Your maps" (🗂️ Map ▾) — no API key shown or asked for, since the
+           site already has one built in. "Bring your own key" is now a small
+           fallback link that only appears if the built-in connection has
+           trouble. Also merged two identical embedded keys into one.
     0.9.4  One clear "🔑 Sign in to Google" button now lives at the top of the
            Sync with Google Drive panel (⋯ menu) — the single place to connect,
            with a status line once you're signed in. Switching back to the
@@ -114,8 +120,6 @@
   .btn.solid:hover{background:#34352b}
   .btn.tab{background:transparent;border-color:transparent}
   .btn.tab.active{background:var(--stamp);color:#fdf3ee;border-color:var(--stamp-ink);box-shadow:0 2px 6px rgba(192,67,43,.25)}
-  .btn.eng{font-weight:700}
-  .btn.eng.on{background:rgba(76,154,90,.15);border-color:#4c9a5a;color:#2f6a3a}
   .seg{display:flex;background:#efe6d0;border:1px solid var(--line-2);border-radius:11px;padding:3px}
 
   main{flex:1;display:flex;min-height:0;position:relative}
@@ -272,7 +276,6 @@
     header{flex-wrap:wrap;gap:9px}
     #mapBtn{max-width:150px}
     .hbtns{order:3;width:100%;flex-wrap:wrap}
-    .btn.eng span.lbl{display:none}
   }
 </style>
 
@@ -283,7 +286,6 @@
     <button class="btn" id="mapBtn" title="Switch / manage maps">🗂️ Map ▾</button>
     <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off"><div class="results" id="results"></div></div>
     <div class="hbtns">
-      <button class="btn eng" id="engineBtn" title="Map engine">🗺️ <span class="lbl">OpenStreetMap</span></button>
       <div class="seg"><button class="btn tab active" id="tabMap">🗺️ Map</button><button class="btn tab" id="tabTable">▦ Table</button></div>
       <div class="menu" id="menu">
         <button class="btn" id="menuBtn">⋯</button>
@@ -291,7 +293,6 @@
           <button data-act="maps"><span class="mi">🗂️</span> Switch / manage maps</button>
           <button data-act="drive"><span class="mi">☁️</span> Sync with Google Drive</button>
           <button data-act="lang"><span class="mi">🌐</span> Display language</button>
-          <button data-act="google"><span class="mi">🟢</span> Connect Google Maps</button>
           <div class="sep"></div>
           <button data-act="share"><span class="mi">🔗</span> Share this map (code)</button>
           <button data-act="expjson"><span class="mi">⬇</span> Export this map (JSON)</button>
@@ -364,7 +365,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.4";
+var WANDERMARK_VERSION="0.9.5";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -375,8 +376,7 @@ var WANDERMARK_VERSION="0.9.4";
    A person's own entered values always override these.
    ============================================================================ */
 var CONFIG={
-  mapsKey:"AIzaSyDMrPg3INdf6lXcclBvmVK5necLa93q7JA",        // Google Maps JS API key (referrer-restricted) — base map + search + photos
-  driveKey:"AIzaSyDMrPg3INdf6lXcclBvmVK5necLa93q7JA",       // Google Drive API key (referrer-restricted) — reads the shared folder
+  apiKey:"AIzaSyDMrPg3INdf6lXcclBvmVK5necLa93q7JA",         // Referrer-restricted Google API key — covers Maps JS + Places (base map, search, photos) AND the Drive API (reads the shared folder). One key, multiple APIs enabled on it.
   driveFolderId:"",  // shared Drive folder ID (folder shared "Anyone with the link → Viewer")
   oauthClientId:"571277467395-6ik6sfbvubt11h6cg137g5g9npr9pkrs.apps.googleusercontent.com"   // OAuth Client ID (…apps.googleusercontent.com) — for sign-in to edit/save
 };
@@ -401,7 +401,7 @@ var appSettings={lang:"native",drive:{folderId:"",key:"",clientId:"",auto:false}
 var LIB={activeId:null,order:[],maps:{}};
 var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
 var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null};
-var gkey="";
+var gkey="", gkeyBlocked=false;
 var markers={};
 
 /* ===================== storage ===================== */
@@ -652,13 +652,12 @@ function teardownMap(){ ui.mapReady=false;
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
 function startEngine(kind){ teardownMap();
   if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }
-  updateEngineBadge();
   Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); }); }
-function updateEngineBadge(){ var b=document.getElementById("engineBtn");
-  if(ui.engine==="google"){ b.innerHTML='🟢 <span class="lbl">Google ✓</span>'; b.classList.add("on"); b.title="Connected to Google Maps — click to manage"; }
-  else { b.innerHTML='🗺️ <span class="lbl">OpenStreetMap</span>'; b.classList.remove("on"); b.title="Keyless. Click to connect Google Maps for better search."; } }
-function onGkeyRejected(){ toast("Google rejected that key. Check it’s valid with Maps JavaScript + Places APIs enabled, and that its website restriction allows https://kabigone.github.io/* — then reload."); gkey=""; Store.set(GKEY_KEY,""); startEngine("osm"); }
-function onGoogleLoadError(){ toast("Couldn’t load Google here (often blocked inside previews). Download the file and open it in your browser."); startEngine("osm"); }
+function onGkeyRejected(){ gkeyBlocked=true; var ownKey=(gkey&&gkey!==CONFIG.apiKey);
+  toast(ownKey?"Google rejected that key — switching to OpenStreetMap. Open 🗂️ Map ▾ → Map style to try a different one.":"Google rejected the shared Maps connection — switching to OpenStreetMap.");
+  if(ownKey){ gkey=""; Store.set(GKEY_KEY,""); }
+  startEngine("osm"); }
+function onGoogleLoadError(){ gkeyBlocked=true; toast("Couldn’t load Google Maps here — switching to OpenStreetMap. (Often blocked inside previews; the live site usually works fine.)"); startEngine("osm"); }
 
 /* ===================== add place ===================== */
 function markDirty(){ if(state){ state.dirty=true; scheduleAutoPush(state); } }
@@ -790,6 +789,12 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
     else { acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
     return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.dirty?' <span style="color:var(--stamp)">●</span>':"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
   var driveOn=!!(dcfg.folderId&&dcfg.key);
+  var styleSection="<div class=\"divlbl\"><span class=\"ln\"></span>Map style<span class=\"ln\"></span></div>"+
+    '<div class="seg" style="display:inline-flex;margin-bottom:6px">'+
+    '<button class="btn tab'+(ui.engine==="google"?" active":"")+'" id="engGoogle">🟢 Google Maps</button>'+
+    '<button class="btn tab'+(ui.engine==="osm"?" active":"")+'" id="engOSM">🗺️ OpenStreetMap</button></div>'+
+    '<p class="hint" style="margin-top:0">Google Maps gives better search, autocomplete, photos, and accurate hours.'+
+    ((gkeyBlocked||!CONFIG.apiKey)?' Having trouble connecting? <a href="#" id="ownKeyLink">Use your own Google Maps API key</a>.':"")+'</p>';
   openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="maps-list">'+
     (personal.length?'<div class="grouphdr">My maps</div>'+rows(personal):"")+
@@ -800,8 +805,13 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
     (driveOn?'<button class="ghostbtn" id="driveRefresh" style="margin-bottom:6px">↻ Refresh maps from Drive</button>':"")+
     "<div class=\"divlbl\"><span class=\"ln\"></span>New map<span class=\"ln\"></span></div>"+
     '<div class="row2"><div class="field" style="flex:1;margin:0"><input id="newMapName" placeholder="e.g. Kyoto, Lisbon, Tabelog Ramen…"></div><button class="pillbtn" id="newMapGo" style="margin:0">＋ Create</button></div>'+
-    '<p class="hint" style="margin-top:12px">Each KML/KMZ or Wandermark file you import becomes its own map. To pull a whole folder of maps automatically, use <b>☁️ Sync with Google Drive</b> in the ⋯ menu.</p></div>');
+    '<p class="hint" style="margin-top:12px">Each KML/KMZ or Wandermark file you import becomes its own map. To pull a whole folder of maps automatically, use <b>☁️ Sync with Google Drive</b> in the ⋯ menu.</p>'+
+    styleSection+
+    "</div>");
   modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#engGoogle").onclick=function(){ if(ui.engine==="google") return; if(!gkey){ toast("No Google Maps connection available — try “Use your own API key” below"); return; } closeModal(); startEngine("google"); };
+  modal.querySelector("#engOSM").onclick=function(){ if(ui.engine==="osm") return; closeModal(); startEngine("osm"); };
+  var okl=modal.querySelector("#ownKeyLink"); if(okl) okl.onclick=function(e){ e.preventDefault(); ownKeyModal(); };
   if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
   modal.querySelectorAll("[data-go]").forEach(function(el){ el.onclick=function(){ switchMap(el.getAttribute("data-go")); }; });
   modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-ren")]; var nm=prompt("Rename map:",m.name); if(nm!=null){ m.name=nm.trim()||m.name; save(); renderMapBtn(); mapsModal(); } }; });
@@ -1024,19 +1034,19 @@ function languageModal(){ var opts=LANGS.map(function(l){return '<option value="
     if(ui.engine==="google"&&changed){ toast("Reloading to apply language…"); setTimeout(function(){ location.reload(); },600); } else { closeModal(); renderAll(); toast("Language set — new searches will use it"); } };
   if(ui.engine==="google"){ modal.querySelector("#langRefetch").onclick=function(){ closeModal(); refetchAll(); }; } }
 
-function googleModal(){ var connected=ui.engine==="google";
-  openModal('<div class="mh"><div><h2>Connect Google Maps</h2><p>Better search, autocomplete, photos, and accurate hours.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><div class="field"><label>Google Maps API key</label><input id="gkeyIn" placeholder="AIza…" value="'+esc(gkey)+'"></div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="gkeySave" style="background:var(--teal)">🟢 '+(connected?"Update key":"Connect")+"</button>"+
-    (connected?'<button class="pillbtn" id="gkeyOff" style="background:#9a3322">↺ Disconnect (use OpenStreetMap)</button>':"")+"</div>"+
+function ownKeyModal(){ var hasOwn=!!(gkey&&gkey!==CONFIG.apiKey);
+  openModal('<div class="mh"><div><h2>Use your own Google Maps key</h2><p>Only needed if the built-in connection isn’t working for you — e.g. running this file locally rather than from the website.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Google Maps API key</label><input id="gkeyIn" placeholder="AIza…" value="'+esc(hasOwn?gkey:"")+'"></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="gkeySave" style="background:var(--teal)">🟢 Connect</button>'+
+    (hasOwn?'<button class="pillbtn" id="gkeyOff" style="background:#9a3322">↺ Use the site’s key instead</button>':"")+"</div>"+
     '<div class="divlbl"><span class="ln"></span>Getting a key (free tier)<span class="ln"></span></div>'+
     '<ol class="steps"><li>Open the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> and create a project.</li>'+
     '<li>Enable <b>Maps JavaScript API</b> and <b>Places API</b> (set up billing — Google gives a recurring free credit).</li>'+
     '<li>Create an <b>API key</b> under Credentials and paste it above.</li><li>Recommended: restrict the key before sharing.</li></ol>'+
     '<div class="note-box">🔒 Your key is stored only in this browser — never written into the file, exports, or share codes.<br><br>⚠️ Inside this chat preview Google is usually blocked; download the file and open it in your own browser for the full Google experience. If you change the key, reload the page.</div></div>');
   modal.querySelector(".close").onclick=closeModal;
-  modal.querySelector("#gkeySave").onclick=function(){ var v=modal.querySelector("#gkeyIn").value.trim(); if(!v){ toast("Paste a key first"); return; } gkey=v; Store.set(GKEY_KEY,v); closeModal(); toast("Connecting to Google…"); startEngine("google"); };
-  if(connected) modal.querySelector("#gkeyOff").onclick=function(){ gkey=""; Store.set(GKEY_KEY,""); closeModal(); startEngine("osm"); toast("Back to OpenStreetMap"); }; }
+  modal.querySelector("#gkeySave").onclick=function(){ var v=modal.querySelector("#gkeyIn").value.trim(); if(!v){ toast("Paste a key first"); return; } gkey=v; gkeyBlocked=false; Store.set(GKEY_KEY,v); closeModal(); toast("Connecting to Google…"); startEngine("google"); };
+  if(hasOwn) modal.querySelector("#gkeyOff").onclick=function(){ gkey=CONFIG.apiKey||""; gkeyBlocked=false; Store.set(GKEY_KEY,""); closeModal(); toast("Connecting…"); startEngine(gkey?"google":"osm"); }; }
 
 function shareModal(){ var code="WMK1."+btoa(unescape(encodeURIComponent(JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories}))));
   openModal('<div class="mh"><div><h2>Share “'+esc(state.name)+'”</h2><p>'+state.places.length+' places · send the code; a friend pastes it into “Import from code”.</p></div><button class="close">✕</button></div>'+
@@ -1148,7 +1158,6 @@ function wireUI(){
   document.getElementById("tvClose").onclick=function(){ setView("map"); };
   document.getElementById("tvCsv").onclick=exportCSV;
   document.getElementById("addCatBtn").onclick=categoryModal;
-  document.getElementById("engineBtn").onclick=googleModal;
   document.getElementById("mapBtn").onclick=mapsModal;
 
   var menu=document.getElementById("menu");
@@ -1157,7 +1166,7 @@ function wireUI(){
   menu.querySelector(".pop-menu").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; var act=b.getAttribute("data-act"); menu.classList.remove("on");
     if(act==="maps") mapsModal(); else if(act==="drive") driveModal(); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
     else if(act==="imp") document.getElementById("fileInput").click(); else if(act==="impcode") importCodeModal();
-    else if(act==="google") googleModal(); else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); });
+    else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); });
   document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
   document.getElementById("sideToggle").onclick=function(){ document.getElementById("aside").classList.toggle("open"); };
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
@@ -1175,11 +1184,11 @@ function boot(){ wireUI();
     if(!appSettings.drive) appSettings.drive={folderId:"",key:"",clientId:"",auto:false};
     else appSettings.drive=Object.assign({folderId:"",key:"",clientId:"",auto:false},appSettings.drive);
     // Embedded shared credentials (CONFIG) fill in anything the person hasn't set themselves.
-    if(!appSettings.drive.key && CONFIG.driveKey) appSettings.drive.key=CONFIG.driveKey;
+    if(!appSettings.drive.key && CONFIG.apiKey) appSettings.drive.key=CONFIG.apiKey;
     if(!appSettings.drive.folderId && CONFIG.driveFolderId) appSettings.drive.folderId=CONFIG.driveFolderId;
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
-    if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.driveKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
-    Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.mapsKey||""; renderMapBtn(); startEngine(gkey?"google":"osm");
+    if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
+    Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); startEngine(gkey?"google":"osm");
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }
 boot();

@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.5] — Google Maps "just works"; no keys to look at
+
+### Changed
+- **Map style is now a plain toggle, not a "connect" flow.** The hosted site
+  already embeds a shared, referrer-restricted API key that powers both Google
+  Maps and Drive — so most people never need to see, paste, or manage a key at
+  all. The old "Connect Google Maps" button + key-entry modal (reachable from
+  the header and the ⋯ menu) is gone. In its place: a simple **Google Maps /
+  OpenStreetMap** switch inside **Your maps** (🗂️ Map ▾ → Map style), right
+  where you're already managing maps.
+- **"Bring your own key" still exists, but only as a quiet fallback** — a small
+  "having trouble connecting?" link appears in that same panel only if the
+  built-in connection fails (e.g. you're running the file locally rather than
+  from the website, where the referrer-restricted key won't work).
+- Removed the redundant second copy of the embedded API key — `mapsKey` and
+  `driveKey` in `CONFIG` were always the literal same key (one key with Maps
+  JS, Places, and Drive APIs all enabled on it); merged into one `apiKey`.
+
+---
+
 ## [0.9.4] — One clear place to sign in, and fresher pulls on tab return
 
 ### Changed
