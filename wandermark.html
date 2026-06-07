@@ -2,10 +2,15 @@
   Wandermark — personal, shareable travel maps in a single HTML file.
   Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
 
-  VERSION: 0.9.3
+  VERSION: 0.9.4
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.4  One clear "🔑 Sign in to Google" button now lives at the top of the
+           Sync with Google Drive panel (⋯ menu) — the single place to connect,
+           with a status line once you're signed in. Switching back to the
+           Wandermark tab now re-checks Drive right away instead of waiting for
+           the next periodic poll, so others' changes show up without a refresh.
     0.9.3  Auto-push now tries a silent (no-popup) Google re-sign-in when your
            session has expired — common on phones — instead of failing quietly.
            If that's not possible, you get a clear "your edits aren't reaching
@@ -359,7 +364,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.3";
+var WANDERMARK_VERSION="0.9.4";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -868,7 +873,7 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
     client.requestAccessToken({prompt:"none"}); }); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
-  toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Tap “Update on Drive” in 🗂️ to sign in and push them."); }
+  toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open ⋯ → Sync with Google Drive and tap “Sign in to Google” to push them."); }
 function scheduleAutoPush(map){ if(!map||!map.driveId) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
   autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; if(!map.dirty) return;
@@ -899,10 +904,18 @@ function driveSaveMap(map,cb,opts){ opts=opts||{}; var fid=appSettings.drive&&ap
           if(!opts.silent) toast("Published “"+map.name+"” to Drive — others will see it on their next sync"); if(cb)cb(); })
         .catch(function(e){ fail("Publish failed: ",e); }); }
   }); }
-function startDrivePolling(){ setInterval(function(){ var d=appSettings.drive||{};
-  if(!d.folderId||!d.key||document.hidden) return; syncDrive({silent:true}); },120000); }
+var lastDriveSyncAt=0;
+function pollDriveIfDue(minGapMs){ var d=appSettings.drive||{};
+  if(!d.folderId||!d.key||document.hidden) return;
+  if(Date.now()-lastDriveSyncAt<minGapMs) return;
+  lastDriveSyncAt=Date.now(); syncDrive({silent:true}); }
+function startDrivePolling(){
+  setInterval(function(){ pollDriveIfDue(90000); },120000);
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) pollDriveIfDue(45000); });
+  window.addEventListener("focus",function(){ pollDriveIfDue(45000); }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (⋯ → Sync with Google Drive)"); return; }
+  lastDriveSyncAt=Date.now();
   if(!opts.silent) toast("Syncing maps from Drive…");
   driveListFolder(fid,key,function(files,err){
     if(err||!files){ var msg=driveErrText(err); if(!opts.silent){ toast("Drive sync failed: "+msg); } try{ console.error("Wandermark Drive sync error:",err); }catch(e){} return; }
@@ -930,8 +943,13 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
   });
 }
 function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",clientId:"",auto:false};
+  var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
+  var signInRow=!d.clientId?"":(signedIn
+    ?'<div class="note-box" style="background:#e3f3e6;border-color:#bcdfc2;margin-top:0;margin-bottom:14px">✓ <b>Signed in to Google</b> — you can publish your maps and edit any shared map you have access to. Wandermark will try to keep you signed in automatically; if it ever can’t, it’ll show a clear heads-up here.</div>'
+    :'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:12px;border:1px solid var(--teal);border-radius:10px;background:#eaf6f4"><button class="pillbtn" id="dSignIn" style="background:var(--teal)">🔑 Sign in to Google</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">One tap, once — lets you publish your maps and edit shared ones. After that, Wandermark keeps you signed in automatically in the background.</span></div>');
   openModal('<div class="mh"><div><h2>Sync with Google Drive</h2><p>Read a shared folder of maps — and (optionally) save your own back to it.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><div class="field"><label>Shared folder link or ID</label><input id="dFolder" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.folderId)+'"></div>'+
+    '<div class="mb">'+signInRow+
+    '<div class="field"><label>Shared folder link or ID</label><input id="dFolder" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.folderId)+'"></div>'+
     '<div class="field"><label>Drive API key — for reading (starts “AIza…”)</label><input id="dKey" placeholder="AIza… (Drive API enabled)" value="'+esc(d.key||"")+'"></div>'+
     '<div class="field"><label>OAuth Client ID — for saving (ends “apps.googleusercontent.com”)</label><input id="dClient" placeholder="…apps.googleusercontent.com" value="'+esc(d.clientId||"")+'"></div>'+
     '<label class="checkrow"><input type="checkbox" id="dAuto"'+(d.auto?" checked":"")+'> Auto-sync every time I open Wandermark</label>'+
@@ -945,6 +963,8 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",clientId:"",
     '<li>Then every map gets a <b>Publish / Update on Drive</b> button in the 🗂️ panel: it signs you in and saves to the folder — for your own maps and any shared map you can edit. No manual upload.</li></ol>'+
     '<div class="note-box">With sign-in you can <b>Publish</b> your maps and <b>edit any shared map you have edit access to</b> (the owner shares the folder as <b>Editor</b>). Once you’ve signed in, edits to a map already on Drive <b>auto-save</b> a few seconds after you stop typing — no need to click Push, it just feels like editing a shared document. Wandermark also quietly checks Drive every couple minutes for others’ changes. It’s still last-writer-wins, like Google My Maps — a “●” marks a map with edits not yet on Drive, and if someone else changes a map while you’re mid-edit, you’ll get a heads-up toast before pushing would overwrite their work. Because editing others’ files needs broad access, Google shows an “unverified app” screen while the app is in testing — click <b>Advanced → continue</b> (only your added test users can do this). Sign-in expires every few days; just sign in again.</div></div>');
   modal.querySelector(".close").onclick=closeModal;
+  var si=modal.querySelector("#dSignIn"); if(si) si.onclick=function(){
+    ensureDriveToken(function(){ toast("Signed in to Google ✓"); closeModal(); driveModal(); }); };
   modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim(); var cidVal=modal.querySelector("#dClient").value.trim();
     if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("The API key box has your Client ID. The API key starts “AIza…”."); return; }
     if(cidVal && /^AIza/i.test(cidVal)){ toast("The Client ID box has an API key. The Client ID ends “apps.googleusercontent.com”."); return; }

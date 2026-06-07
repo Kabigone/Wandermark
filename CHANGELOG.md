@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.4] — One clear place to sign in, and fresher pulls on tab return
+
+### Changed
+- **Sign-in, finally in one obvious place.** "Connect to Google" entry points
+  used to be scattered (only reachable indirectly via per-map Publish/Push
+  buttons), so it was easy to miss and hard to find when you needed it. Now
+  the **Sync with Google Drive** panel (⋯ menu) opens with a single, prominent
+  **🔑 Sign in to Google** button right at the top — and once you're signed in,
+  a status line confirms it and explains what it unlocks. This is now *the*
+  place to connect; the per-map Publish/Push buttons still work too.
+
+### Fixed
+- Collaborators' new places sometimes didn't show up until you hard-refreshed
+  the page — the background pull only ran on a ~2-minute timer (and not at all
+  while the tab was hidden). Wandermark now also re-checks Drive as soon as you
+  switch back to the tab or window (rate-limited so it won't spam Drive if
+  you're flipping tabs constantly).
+
+---
+
 ## [0.9.3] — Auto-push doesn't fail silently on stale sign-ins
 
 ### Fixed
