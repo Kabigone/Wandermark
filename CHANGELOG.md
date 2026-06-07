@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.9] — Reverted: silent sign-in on launch
+
+### Changed
+- **Backed out the 0.9.8 "try silent re-auth on launch" change.** In practice,
+  for an OAuth app still in Google's **"testing"** publishing status with the
+  restricted full-`drive` scope, the silent (`prompt:"none"`) flow doesn't
+  succeed quietly — Google flashes its **own** brief error popup ("you don't
+  have access / you're not a test user") on every page load before failing,
+  which is more disruptive than just showing the **🔑 Sign in to Google** badge
+  and letting you click it (the manual `consent` flow reliably works because it
+  lets you pick the right account). One click to reconnect remains the way to
+  go until the OAuth app is verified — at which point silent re-auth should
+  behave better and this could be revisited.
+
+---
+
 ## [0.9.8] — Sign-in sticks across reloads
 
 ### Changed

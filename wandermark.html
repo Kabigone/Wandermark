@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.8
+  VERSION: 0.9.9
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.9  Reverted the 0.9.8 "silent sign-in on launch" attempt — for this
+           app's still-"testing" OAuth status, Google's silent re-auth flashes
+           its own brief "you're not a test user" error popup before failing,
+           which was worse than just showing the Sign-in badge. One click to
+           reconnect remains the reliable path until the OAuth app is verified.
     0.9.8  Returning sign-ins are now silent: on launch, if you've signed in to
            Drive before and still have an active Google session, Wandermark
            quietly re-authenticates in the background (no popup, no click) —
@@ -382,7 +387,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.8";
+var WANDERMARK_VERSION="0.9.9";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1236,7 +1241,6 @@ function boot(){ wireUI();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
-      if(appSettings.drive&&appSettings.drive.clientId) trySilentDriveToken(function(){ updateSigninBadge(); });
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }
 boot();
