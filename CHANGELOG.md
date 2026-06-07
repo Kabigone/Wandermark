@@ -10,6 +10,36 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.8.0] — Drive write-back (save your maps from the app)
+
+### Added
+- **Google sign-in (OAuth, `drive.file` scope)** using an OAuth **Client ID**
+  (separate from the read API key). Stored locally like the other credentials.
+- **Publish / Update on Drive** buttons on your own maps (in the 🗂️ maps panel):
+  publishing creates the map's JSON file in the shared folder; updating
+  overwrites the file you created — no manual upload step.
+- The model: everyone still *reads* the whole folder via the API key; *writing*
+  is per-person via `drive.file`, so you can only change maps **you** published.
+  Keep separate files if two people need to edit the "same" map.
+
+### Changed
+- Read-sync no longer overwrites or deletes maps you've published yourself.
+
+### Notes
+- Needs the app hosted at a fixed origin (your GitHub Pages URL) — OAuth won't
+  work from a local file. With the consent screen in "testing", sign-in expires
+  every few days; just sign in again.
+
+## [0.7.1] – [0.7.3] — Drive sync diagnostics
+
+- Surfaces the **actual** Google error on a failed sync (Drive API not enabled,
+  key not allowed for Drive, folder not shared, key blocked by website) instead
+  of a generic message; logs the full error to the console.
+- Warns when an API key and an OAuth Client ID are pasted into the wrong fields.
+- Friendlier empty-folder message (an empty folder means the connection works).
+
+---
+
 ## [0.7.0] — Hours-derived filters + category editing/merging
 
 ### Added

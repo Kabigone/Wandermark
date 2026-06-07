@@ -2,14 +2,18 @@
   Wandermark — personal, shareable travel maps in a single HTML file.
   Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
 
-  VERSION: 0.7.1
+  VERSION: 0.8.0
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
-    0.7.1  Drive sync now reports the actual Google error (API not enabled,
-           bad key, folder not shared, referrer-blocked) instead of a generic
-           message; warns if the OAuth Client ID is pasted where the API key
-           goes.
+    0.8.0  Drive WRITE-BACK: sign in with Google (OAuth Client ID, drive.file)
+           and Publish / Update your own maps straight to the shared folder —
+           no manual upload. You can only change maps you published; everyone
+           else's stay read-only. Read-sync won't overwrite your published maps.
+    0.7.1–0.7.3  Drive sync diagnostics: reports the real Google error (API not
+           enabled, key not allowed for Drive, folder not shared, referrer
+           blocked), warns on API-key/Client-ID mix-ups, friendlier empty-folder
+           message.
     0.7.0  "Quick filters" auto-derived from opening hours (open now/today,
            breakfast, weekday lunch, dinner, open late, open weekends) — no
            manual tagging. Category editor: rename/recolor/re-icon, and MERGE
@@ -338,7 +342,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.7.3";
+var WANDERMARK_VERSION="0.8.0";
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -356,7 +360,7 @@ var DAYORDER=[["Mo","Mon"],["Tu","Tue"],["We","Wed"],["Th","Thu"],["Fr","Fri"],[
 var LANGS=[["native","Local / native names"],["en","English"],["ja","日本語 (Japanese)"],["ko","한국어 (Korean)"],["zh-CN","中文 (Chinese)"],["fr","Français"],["es","Español"],["de","Deutsch"],["it","Italiano"]];
 
 var STORE_KEY="wandermark:data", GKEY_KEY="wandermark:gkey";
-var appSettings={lang:"native",drive:{folderId:"",key:"",auto:false}};
+var appSettings={lang:"native",drive:{folderId:"",key:"",clientId:"",auto:false}};
 var LIB={activeId:null,order:[],maps:{}};
 var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
 var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null};
@@ -740,13 +744,14 @@ function openModal(html){ modal.innerHTML=html; scrim.classList.add("on"); }
 function closeModal(){ scrim.classList.remove("on"); modal.innerHTML=""; }
 scrim.addEventListener("click",function(e){ if(e.target===scrim) closeModal(); });
 
-function mapsModal(){ var personal=[],curated=[],synced=[];
-  LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.source==="drive") synced.push(m); else if(m.kind==="curated") curated.push(m); else personal.push(m); });
-  function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=m.source==="drive"?"☁️ ":(m.kind==="curated"?"⭐ ":"");
-    var acts=(m.source==="drive")?'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'
-      :'<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button><button class="mact" data-del="'+m.id+'">Delete</button>';
-    return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
-  var dcfg=appSettings.drive||{}; var driveOn=!!(dcfg.folderId&&dcfg.key);
+function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings.drive||{}; var driveWritable=!!(dcfg.folderId&&dcfg.clientId);
+  LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.source==="drive"&&!m.mine) synced.push(m); else if(m.kind==="curated") curated.push(m); else personal.push(m); });
+  function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=(m.source==="drive")?"☁️ ":(m.kind==="curated"?"⭐ ":"");
+    var acts; if(m.source==="drive"&&!m.mine){ acts='<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
+    else { var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.mine?"⤴ Update on Drive":"⤴ Publish to Drive")+'</button>':"";
+      acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
+    return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.mine?" ✓":"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
+  var driveOn=!!(dcfg.folderId&&dcfg.key);
   openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="maps-list">'+
     (personal.length?'<div class="grouphdr">My maps</div>'+rows(personal):"")+
@@ -768,6 +773,7 @@ function mapsModal(){ var personal=[],curated=[],synced=[];
     var m=LIB.maps[id]; if(!confirm("Delete map “"+m.name+"” and its "+m.places.length+" places? This can’t be undone.")) return;
     delete LIB.maps[id]; LIB.order=LIB.order.filter(function(x){return x!==id;}); if(LIB.activeId===id) setActive(LIB.order[0]);
     save(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); } mapsModal(); toast("Map deleted"); }; });
+  modal.querySelectorAll("[data-pub]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-pub")]; if(m) driveSaveMap(m,function(){ mapsModal(); }); }; });
   var go=function(){ var nm=modal.querySelector("#newMapName").value.trim(); if(!nm){ toast("Name your map"); return; } var id=newMap(nm,"personal"); switchMap(id); };
   modal.querySelector("#newMapGo").onclick=go; modal.querySelector("#newMapName").addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
 
@@ -796,6 +802,37 @@ function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId
   var url="https://www.googleapis.com/drive/v3/files?q="+q+"&key="+encodeURIComponent(key)+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
   fetch(url).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
 function driveFetchFile(id,key,cb){ fetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media&key="+encodeURIComponent(key)).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
+/* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
+var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
+function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
+  var s=document.createElement("script"); s.src="https://accounts.google.com/gsi/client"; s.async=true; s.defer=true;
+  s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load Google sign-in (only works on the hosted https site, not a local file)."); }; document.head.appendChild(s); }
+function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Add your OAuth Client ID first (⋯ → Sync with Google Drive)"); return; }
+  if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
+  loadGIS(function(){
+    if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive.file",
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
+        else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
+      error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
+    pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
+function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.kind==="curated"?"curated":"personal"),places:map.places,categories:map.categories}); }
+function driveSaveMap(map,cb){ var fid=appSettings.drive&&appSettings.drive.folderId;
+  if(!fid){ toast("Set up a Drive folder first (⋯ → Sync with Google Drive)"); return; }
+  ensureDriveToken(function(){ var content=mapToFileJSON(map);
+    if(map.driveId&&map.mine){
+      fetch("https://www.googleapis.com/upload/drive/v3/files/"+map.driveId+"?uploadType=media&fields=id",
+        {method:"PATCH",headers:{Authorization:"Bearer "+driveToken,"Content-Type":"application/json"},body:content})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.error){ toast("Drive save failed: "+driveErrText(d.error)); return; }
+          toast("Updated “"+map.name+"” on Drive"); if(cb)cb(); }).catch(function(e){ toast("Drive save failed: "+driveErrText(e)); });
+    } else {
+      var meta={name:"wandermark-"+slug(map.name)+".json",mimeType:"application/json",parents:[fid]};
+      var b="wmk"+Date.now(); var body="--"+b+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(meta)+"\r\n--"+b+"\r\nContent-Type: application/json\r\n\r\n"+content+"\r\n--"+b+"--";
+      fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
+        {method:"POST",headers:{Authorization:"Bearer "+driveToken,"Content-Type":"multipart/related; boundary="+b},body:body})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.error||!d.id){ toast("Publish failed: "+driveErrText(d&&d.error)); return; }
+          map.driveId=d.id; map.mine=true; map.source="drive"; save(); renderMapBtn(); renderAll(); toast("Published “"+map.name+"” to Drive — others will see it on their next sync"); if(cb)cb(); })
+        .catch(function(e){ toast("Publish failed: "+driveErrText(e)); }); }
+  }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (⋯ → Sync with Google Drive)"); return; }
   if(!opts.silent) toast("Syncing maps from Drive…");
@@ -806,37 +843,40 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
     var i=0,added=0,updated=0,seen={};
     (function next(){
       if(i>=jsons.length){
-        Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(m.source==="drive"&&m.driveId&&!seen[m.driveId]){ delete LIB.maps[k]; LIB.order=LIB.order.filter(function(x){return x!==k;}); if(LIB.activeId===k){ setActive(LIB.order[0]||newMap("My map","personal")); } } });
+        Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(m.source==="drive"&&!m.mine&&m.driveId&&!seen[m.driveId]){ delete LIB.maps[k]; LIB.order=LIB.order.filter(function(x){return x!==k;}); if(LIB.activeId===k){ setActive(LIB.order[0]||newMap("My map","personal")); } } });
         save(); renderMapBtn(); renderAll(); if(!opts.silent) toast("Drive: "+added+" new, "+updated+" updated"); if(opts.then) opts.then(); return;
       }
       var f=jsons[i++]; seen[f.id]=true;
       driveFetchFile(f.id,key,function(txt){ if(txt){ try{ var data=JSON.parse(txt); var fallbackName=f.name.replace(/\.json$/i,"");
         var existing=null; Object.keys(LIB.maps).forEach(function(k){ if(LIB.maps[k].driveId===f.id) existing=LIB.maps[k]; });
-        if(existing){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; updated++; }
+        if(existing){ if(!existing.mine){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; updated++; } }
         else { var id=uid(); LIB.maps[id]={id:id,name:data.name||fallbackName,kind:data.kind||"personal",source:"drive",driveId:f.id,places:(data.places||[]).map(normalizePlace),categories:(data.categories&&data.categories.length)?data.categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); added++; }
       }catch(e){} } setTimeout(next,80); });
     })();
   });
 }
-function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",auto:false};
-  openModal('<div class="mh"><div><h2>Sync with Google Drive</h2><p>Auto-build your map directory from a shared Drive folder — no sign-in.</p></div><button class="close">✕</button></div>'+
+function driveModal(){ var d=appSettings.drive||{folderId:"",key:"",clientId:"",auto:false};
+  openModal('<div class="mh"><div><h2>Sync with Google Drive</h2><p>Read a shared folder of maps — and (optionally) save your own back to it.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="field"><label>Shared folder link or ID</label><input id="dFolder" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.folderId)+'"></div>'+
-    '<div class="field"><label>Drive API key</label><input id="dKey" placeholder="AIza… (Drive API enabled)" value="'+esc(d.key||"")+'"></div>'+
+    '<div class="field"><label>Drive API key — for reading (starts “AIza…”)</label><input id="dKey" placeholder="AIza… (Drive API enabled)" value="'+esc(d.key||"")+'"></div>'+
+    '<div class="field"><label>OAuth Client ID — for saving (ends “apps.googleusercontent.com”)</label><input id="dClient" placeholder="…apps.googleusercontent.com" value="'+esc(d.clientId||"")+'"></div>'+
     '<label class="checkrow"><input type="checkbox" id="dAuto"'+(d.auto?" checked":"")+'> Auto-sync every time I open Wandermark</label>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="dSync" style="background:var(--teal)">↻ Save &amp; sync now</button>'+
-    ((d.folderId||d.key)?'<button class="pillbtn" id="dOff" style="background:#9a3322">Disconnect</button>':"")+"</div>"+
-    '<div class="divlbl"><span class="ln"></span>How it works<span class="ln"></span></div>'+
-    '<ol class="steps"><li>Put your map files (the JSON you get from <b>Export this map</b> or the scraper) into one Drive folder.</li>'+
-    '<li>Share that folder: <b>Anyone with the link → Viewer</b>.</li>'+
-    '<li>Paste the folder link above, plus an <b>API key</b> (starts “AIza…”, <b>not</b> the OAuth Client ID that ends in apps.googleusercontent.com) that has the <b>Drive API</b> enabled. It can be the same Cloud project as your Maps key — just enable “Google Drive API” there too.</li>'+
-    '<li>Wandermark lists the folder and loads every <b>.json</b> as a map under “☁️ Shared from Drive”, refreshing them on each sync.</li></ol>'+
-    '<div class="note-box">This is <b>read-only</b>: friends always see your latest folder automatically, and changing a file in Drive updates everyone on their next sync. Saving edits <i>back</i> to Drive from the browser would need Google sign-in and a hosted copy of the app — ask if you want that. Synced maps are read-only here; use “Copy to my maps” to edit a local version.<br><br>If sync fails when opening the file locally, the key may be restricted by website — use an unrestricted key (or host the app).</div></div>');
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pillbtn" id="dSync" style="background:var(--teal)">↻ Save settings &amp; sync now</button>'+
+    ((d.folderId||d.key||d.clientId)?'<button class="pillbtn" id="dOff" style="background:#9a3322">Disconnect</button>':"")+"</div>"+
+    '<div class="divlbl"><span class="ln"></span>Reading (everyone)<span class="ln"></span></div>'+
+    '<ol class="steps"><li>Put map files in one Drive folder; share it <b>Anyone with the link → Viewer</b>.</li>'+
+    '<li>Paste the folder link + an <b>API key</b> (with the <b>Drive API</b> enabled). Wandermark loads every <b>.json</b> as a map under “☁️ Shared from Drive”.</li></ol>'+
+    '<div class="divlbl"><span class="ln"></span>Saving (optional)<span class="ln"></span></div>'+
+    '<ol class="steps"><li>Add an <b>OAuth Client ID</b> (Web application; authorized origin <b>https://kabigone.github.io</b>).</li>'+
+    '<li>Then each of your own maps gets a <b>Publish / Update on Drive</b> button (in the 🗂️ maps panel) that signs you in and saves it to the folder — no manual upload.</li></ol>'+
+    '<div class="note-box">You only need <b>edit</b> access to the folder to save into it (the owner shares it with you as Editor). You can only change maps <b>you</b> published; everyone else’s stay read-only. If two people need to edit the same map, keep separate files. Sign-in in “testing” mode expires every few days — just sign in again.</div></div>');
   modal.querySelector(".close").onclick=closeModal;
-  modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim();
-    if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("That’s the OAuth Client ID. Sync needs an API key (starts “AIza…”) with the Drive API enabled."); return; }
-    appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:keyVal,auto:modal.querySelector("#dAuto").checked}; save();
-    if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and a key"); return; } closeModal(); syncDrive({}); };
-  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",key:"",auto:false}; save(); closeModal(); toast("Drive disconnected (synced maps kept)"); }; }
+  modal.querySelector("#dSync").onclick=function(){ var keyVal=modal.querySelector("#dKey").value.trim(); var cidVal=modal.querySelector("#dClient").value.trim();
+    if(/apps\.googleusercontent\.com$/i.test(keyVal)){ toast("The API key box has your Client ID. The API key starts “AIza…”."); return; }
+    if(cidVal && /^AIza/i.test(cidVal)){ toast("The Client ID box has an API key. The Client ID ends “apps.googleusercontent.com”."); return; }
+    appSettings.drive={folderId:driveExtractId(modal.querySelector("#dFolder").value),key:keyVal,clientId:cidVal,auto:modal.querySelector("#dAuto").checked}; save();
+    if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and an API key"); return; } closeModal(); syncDrive({}); };
+  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",key:"",clientId:"",auto:false}; driveToken=""; save(); closeModal(); toast("Drive disconnected (synced maps kept)"); }; }
 
 function categoryModal(){ var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
     return '<div class="catrow" data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span><span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span></div>'; }).join("");
@@ -1038,7 +1078,8 @@ function boot(){ wireUI();
     if(!ok || !LIB.activeId || !LIB.maps[LIB.activeId]){ if(!LIB.order.length){ var id2=newMap("My map","personal"); LIB.activeId=id2; } else LIB.activeId=LIB.order[0]; }
     Object.keys(LIB.maps).forEach(function(k){ var m=LIB.maps[k]; if(!m.categories||!m.categories.length) m.categories=freshCats(); if(!m.places) m.places=[]; if(!m.kind) m.kind="personal"; });
     state=LIB.maps[LIB.activeId];
-    if(!appSettings.drive) appSettings.drive={folderId:"",key:"",auto:false};
+    if(!appSettings.drive) appSettings.drive={folderId:"",key:"",clientId:"",auto:false};
+    else appSettings.drive=Object.assign({folderId:"",key:"",clientId:"",auto:false},appSettings.drive);
     Store.get(GKEY_KEY).then(function(k){ gkey=k||""; renderMapBtn(); startEngine(gkey?"google":"osm");
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400); }); }); }
 boot();
