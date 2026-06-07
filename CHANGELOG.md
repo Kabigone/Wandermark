@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.7] — Picker "developer key is invalid" fix
+
+### Fixed
+- The new folder picker (introduced in 0.9.6) could fail with **"There was an
+  error! The API developer key is invalid"**. It now also passes a **Drive App
+  ID** — derived from the OAuth Client ID's project number — alongside the
+  developer key, matching Google's own sample wiring for `PickerBuilder`. If
+  the picker still errors (e.g. the Cloud project doesn't have the **Google
+  Picker API** enabled, or the API key's restrictions don't allow it), you now
+  get a clear toast naming the fix instead of a silent dead end — and "Advanced:
+  Drive connection settings" still has the manual paste-a-link fallback.
+
+---
+
 ## [0.9.6] — "Your maps" is the front door for shared maps
 
 ### Changed

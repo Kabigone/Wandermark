@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.6
+  VERSION: 0.9.7
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.7  Fixed the folder picker showing "The API developer key is invalid":
+           it now also passes a Drive App ID (derived from the OAuth Client
+           ID's project number, per Google's own sample) alongside the
+           developer key, and gives a clearer toast — pointing at the Google
+           Cloud Console fix — if the picker still errors out.
     0.9.6  "Your maps" (🗂️ Map ▾) is now the home for getting connected: a
            prominent sign-in button when you're not signed in, a "choose shared
            folder from Drive" button that opens Google's real folder picker (no
@@ -372,7 +377,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.6";
+var WANDERMARK_VERSION="0.9.7";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -900,9 +905,12 @@ function loadPicker(cb){ if(pickerLoaded&&window.google&&google.picker){ cb(); r
   document.head.appendChild(s); }
 function pickDriveFolder(cb){ ensureDriveToken(function(){ loadPicker(function(){
   var view=new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true).setMode(google.picker.DocsViewMode.LIST);
-  new google.picker.PickerBuilder().setOAuthToken(driveToken).setDeveloperKey(CONFIG.apiKey||appSettings.drive.key||"")
-    .addView(view).setTitle("Choose the shared maps folder")
-    .setCallback(function(data){ if(data.action===google.picker.Action.PICKED){ var doc=data.docs[0]; cb(doc.id,doc.name); } })
+  var cid=(appSettings.drive&&appSettings.drive.clientId)||CONFIG.oauthClientId||"", appId=(/^(\d+)-/.exec(cid)||[])[1];
+  var pb=new google.picker.PickerBuilder().setOAuthToken(driveToken).setDeveloperKey(CONFIG.apiKey||appSettings.drive.key||"");
+  if(appId) pb.setAppId(appId);
+  pb.addView(view).setTitle("Choose the shared maps folder")
+    .setCallback(function(data){ if(data.action===google.picker.Action.PICKED){ var doc=data.docs[0]; cb(doc.id,doc.name); }
+      else if(data.action===google.picker.Action.ERROR && data.error) toast("Picker error: "+data.error+" — your Google Cloud project likely needs the “Google Picker API” enabled (and added to the API key's allowed APIs if it's restricted). Use “Advanced” to paste a folder link instead for now."); })
     .build().setVisible(true); }); }); }
 function updateSigninBadge(){ var b=document.getElementById("signinBadge"); if(!b) return;
   var d=appSettings.drive||{}; var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
