@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.1] — Embeddable shared config ("just works" for friends)
+
+### Added
+- A `CONFIG` block at the top of the script. Fill in a referrer-restricted Maps
+  key, a referrer-restricted Drive key + shared folder ID, and the OAuth Client
+  ID, and anyone who opens the hosted URL gets Google mode + the shared maps with
+  nothing to enter. A person's own entered values always override CONFIG.
+- Clearer toast when the Maps key is blocked by a website restriction (points at
+  the `https://kabigone.github.io/*` wildcard fix).
+
+### Sharing model (summary)
+- To share: give people the **URL**. With CONFIG filled, Google mode and the
+  shared folder just work. To let someone **edit**, add them as an OAuth **test
+  user** and share the Drive folder with them as **Editor**; they sign in with
+  their own Google account.
+- Only embed **referrer-restricted** browser keys (restricted to the site). The
+  Client ID is public by design. Never embed an unrestricted key.
+
+---
+
 ## [0.9.0] — Collaborative editing of shared maps
 
 ### Changed

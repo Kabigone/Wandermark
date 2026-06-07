@@ -2,10 +2,14 @@
   Wandermark — personal, shareable travel maps in a single HTML file.
   Map engine: OpenStreetMap (keyless) or Google Maps (bring your own API key).
 
-  VERSION: 0.9.0
+  VERSION: 0.9.1
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.1  Optional CONFIG block (top of script) to embed shared, referrer-
+           restricted credentials so friends just open the URL — Maps key, Drive
+           key + folder, OAuth Client ID. A person's own entered values override.
+           Clearer message when a Maps key is blocked by a website restriction.
     0.9.0  Collaborative editing: with sign-in you can edit ANY shared map you
            have Drive edit-access to (not just your own) and push changes —
            last-writer-wins, like Google My Maps. A "●" marks unpushed local
@@ -346,7 +350,22 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.0";
+var WANDERMARK_VERSION="0.9.1";
+
+/* ============================================================================
+   CONFIG — optional shared credentials so friends can just open the URL.
+   Leave blank to have each person enter their own (stored only in their browser).
+   SAFETY: only embed browser keys that are RESTRICTED to this site
+   (Google Cloud → the key → Website restrictions → https://kabigone.github.io/*).
+   The OAuth Client ID is public by design and always safe to embed.
+   A person's own entered values always override these.
+   ============================================================================ */
+var CONFIG={
+  mapsKey:"",        // Google Maps JS API key (referrer-restricted) — base map + search + photos
+  driveKey:"",       // Google Drive API key (referrer-restricted) — reads the shared folder
+  driveFolderId:"",  // shared Drive folder ID (folder shared "Anyone with the link → Viewer")
+  oauthClientId:""   // OAuth Client ID (…apps.googleusercontent.com) — for sign-in to edit/save
+};
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
@@ -624,7 +643,7 @@ function startEngine(kind){ teardownMap();
 function updateEngineBadge(){ var b=document.getElementById("engineBtn");
   if(ui.engine==="google"){ b.innerHTML='🟢 <span class="lbl">Google ✓</span>'; b.classList.add("on"); b.title="Connected to Google Maps — click to manage"; }
   else { b.innerHTML='🗺️ <span class="lbl">OpenStreetMap</span>'; b.classList.remove("on"); b.title="Keyless. Click to connect Google Maps for better search."; } }
-function onGkeyRejected(){ toast("Google rejected that key. Check it’s valid with Maps JavaScript + Places APIs enabled, then reload."); gkey=""; Store.set(GKEY_KEY,""); startEngine("osm"); }
+function onGkeyRejected(){ toast("Google rejected that key. Check it’s valid with Maps JavaScript + Places APIs enabled, and that its website restriction allows https://kabigone.github.io/* — then reload."); gkey=""; Store.set(GKEY_KEY,""); startEngine("osm"); }
 function onGoogleLoadError(){ toast("Couldn’t load Google here (often blocked inside previews). Download the file and open it in your browser."); startEngine("osm"); }
 
 /* ===================== add place ===================== */
@@ -1085,7 +1104,12 @@ function boot(){ wireUI();
     state=LIB.maps[LIB.activeId];
     if(!appSettings.drive) appSettings.drive={folderId:"",key:"",clientId:"",auto:false};
     else appSettings.drive=Object.assign({folderId:"",key:"",clientId:"",auto:false},appSettings.drive);
-    Store.get(GKEY_KEY).then(function(k){ gkey=k||""; renderMapBtn(); startEngine(gkey?"google":"osm");
+    // Embedded shared credentials (CONFIG) fill in anything the person hasn't set themselves.
+    if(!appSettings.drive.key && CONFIG.driveKey) appSettings.drive.key=CONFIG.driveKey;
+    if(!appSettings.drive.folderId && CONFIG.driveFolderId) appSettings.drive.folderId=CONFIG.driveFolderId;
+    if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
+    if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.driveKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
+    Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.mapsKey||""; renderMapBtn(); startEngine(gkey?"google":"osm");
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400); }); }); }
 boot();
 })();
