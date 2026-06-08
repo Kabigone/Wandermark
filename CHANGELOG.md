@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.13] — See whose folder you've connected to
+
+### Added
+- **The "Connected to ___" confirmation now names the folder's owner** when
+  it isn't you — e.g. "Connected to Wandermark — shared by Alex" instead of
+  just "Connected to Wandermark." When a friend shares their Wandermark
+  folder with you and you land on it (whether auto-detected or hand-picked),
+  you immediately know it's *theirs* and that you're in the right place,
+  rather than wondering whether you've actually found the shared folder or
+  just something of your own with a similar name. (Best-effort: quietly
+  omitted if the lookup fails, or you connected without signing in.)
+
+---
+
 ## [0.9.12] — Background sync survives a long session
 
 ### Fixed

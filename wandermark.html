@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.12
+  VERSION: 0.9.13
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.13 When you connect to a Drive folder that someone else owns (e.g. a
+           friend's shared Wandermark folder), the confirmation now names them
+           — "Connected to Wandermark — shared by Alex" — so a tester knows at
+           a glance whose maps they've landed on, instead of just a folder name.
     0.9.12 Background sync stays connected through a long session: if your
            ~hour-long sign-in token lapses while the app is open, the quiet
            periodic Drive check now silently refreshes it first (the same
@@ -405,7 +409,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.12";
+var WANDERMARK_VERSION="0.9.13";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -947,8 +951,19 @@ function pickDriveFolder(cb){ ensureDriveToken(function(){ loadPicker(function()
     .setCallback(function(data){ if(data.action===google.picker.Action.PICKED){ var doc=data.docs[0]; cb(doc.id,doc.name); }
       else if(data.action===google.picker.Action.ERROR && data.error) toast("Picker error: "+data.error+" — your Google Cloud project likely needs the “Google Picker API” enabled (and added to the API key's allowed APIs if it's restricted). Use “Advanced” to paste a folder link instead for now."); })
     .build().setVisible(true); }); }); }
+/* So a tester connecting to someone else's shared folder sees whose maps these
+   are (and isn't left wondering whether they've found the right thing): look up
+   the folder's owner and, if it isn't the signed-in user themselves, fold their
+   name into the confirmation toast. Best-effort — silently omitted if it fails
+   or the token isn't available (e.g. connecting via a pasted link while signed out). */
+function fetchFolderOwnerName(id,cb){ if(!driveToken||Date.now()>=driveTokenExp){ cb(null); return; }
+  fetch("https://www.googleapis.com/drive/v3/files/"+id+"?fields="+encodeURIComponent("owners(displayName,me)"),{headers:{Authorization:"Bearer "+driveToken}})
+    .then(function(r){ return r.json(); }).then(function(d){ var o=d&&d.owners&&d.owners[0];
+      cb((o&&!o.me&&o.displayName)?o.displayName:null); })
+    .catch(function(){ cb(null); }); }
 function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
-  toast("Connected to “"+(name||"folder")+"” — syncing…"); syncDrive({then:function(){ mapsModal(); }}); }
+  fetchFolderOwnerName(id,function(owner){ toast("Connected to “"+(name||"folder")+"”"+(owner?" — shared by "+owner:"")+" — syncing…"); });
+  syncDrive({then:function(){ mapsModal(); }}); }
 /* Right after sign-in, look for a folder that's obviously "the" Wandermark folder
    (named e.g. "Wandermark" or "Wandermark maps", owned or shared with this account)
    and connect to it straight away — no picker needed unless we can't tell which one. */
