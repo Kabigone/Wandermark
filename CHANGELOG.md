@@ -10,6 +10,29 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.10] — Read access for privately-shared folders
+
+### Added
+- **Drive sync now works with folders shared privately with specific people**,
+  not only ones shared "Anyone with the link." When you're signed in, listing
+  the folder and downloading its map files (`driveListFolder`/`driveFetchFile`)
+  now authenticate as **you** (your OAuth token) instead of relying solely on
+  the embedded public API key — falling back to the API key automatically when
+  you're signed out, so public-folder sync keeps working exactly as before.
+
+### Why this matters
+- This unlocks a better sharing model for privacy-conscious owners: share your
+  folder directly with named friends' Google accounts (Viewer, or Editor to
+  let them edit too) instead of "Anyone with the link." That keeps the folder
+  out of public reach **and** — as a bonus — makes it actually show up in their
+  📁 folder picker, since Drive only surfaces folders that were explicitly
+  shared with an account in "Shared with me" / browsing views.
+- Friendlier error message when a folder genuinely isn't accessible: it now
+  tells you whether to double-check the link (public-folder path) or to sign in
+  with the account the folder was shared with (private-folder path).
+
+---
+
 ## [0.9.9] — Reverted: silent sign-in on launch
 
 ### Changed

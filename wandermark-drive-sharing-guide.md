@@ -43,7 +43,10 @@ you maintain the folder, everyone else just opens the app.
 **One-time setup (each person), all from 🗂️ Map ▾ ("Your maps") — that's the
 front door for this:**
 1. Owner: put your map JSON files in one Drive folder and share it with the
-   group as **Editor** (so everyone can publish/update their own maps too).
+   group — either **"Anyone with the link"** (simplest, but the folder is then
+   reachable by anyone who has the link), or, for a more private setup, **share
+   it directly with each friend's Google account** (Viewer to read, Editor to
+   also edit) — see "Keeping it private" below.
 2. Each person: open **🗂️ Map ▾**, tap **🔑 Sign in to Google**, then
    **📁 Choose shared folder from Drive** — Google's own folder picker opens so
    you can browse and click the folder, no copying links out of Drive.
@@ -65,6 +68,27 @@ same map together?" below, because the answer is now **yes**.
   need to open it.
 - The folder needs to be shared with the group (at least **Viewer** to read;
   **Editor** if you want them to publish/edit maps back to it too).
+
+### Keeping it private (sharing with named people instead of "anyone with the link")
+
+If you'd rather not have a folder anyone-with-the-link can reach — say you're
+thinking about sharing the app more broadly later and don't want your personal
+maps along for the ride — share the Drive folder directly with each friend's
+**Google account** (their email, as Viewer or Editor) instead of "Anyone with
+the link." Two things fall out of that automatically:
+
+- **It stays private.** Only the accounts you named can read it — nothing
+  about the folder is guessable or link-shareable.
+- **It actually shows up in their picker.** Drive only surfaces folders that
+  were explicitly shared with an account inside "Shared with me" / browsing
+  views — "anyone with the link" folders are invisible there even though the
+  person technically has access. Once you share directly with someone, signing
+  in and tapping **📁 Choose shared folder from Drive** will show your folder
+  right away, no searching.
+
+When someone's signed in, Wandermark reads the folder **as them** (their own
+Google access), so a privately-shared folder works exactly like a public one
+once they're connected — they just need to be signed in for it to sync.
 
 ---
 

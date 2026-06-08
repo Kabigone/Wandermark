@@ -81,7 +81,10 @@ map engines (`LeafletEngine`, `GoogleEngine`) implement the same interface
 
 ## Drive model (so changes here stay coherent)
 
-- **Read** = API key listing a public folder + fetching each `.json` (no sign-in).
+- **Read** = `driveListFolder`/`driveFetchFile` (`driveAuthedFetch`): use the
+  signed-in user's OAuth token when available (works for folders shared
+  privately with specific people), else fall back to the public API key (works
+  for folders shared "Anyone with the link", no sign-in needed).
 - **Write** = OAuth (full `drive` scope) → create/update files via the upload
   endpoint. A map's `driveId` ties it to its Drive file; `dirty` marks unpushed
   local edits (sync won't overwrite a dirty map). Last-writer-wins by design.

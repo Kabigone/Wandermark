@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.9
+  VERSION: 0.9.10
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.10 Drive sync can now read folders shared privately with specific
+           people, not just "Anyone with the link" ones. When you're signed
+           in, reading the folder and its map files now uses *your* Google
+           account (OAuth) instead of only the public API key — so an owner
+           can share a folder with named friends (which also makes it show up
+           in their folder picker) without making it link-public.
     0.9.9  Reverted the 0.9.8 "silent sign-in on launch" attempt — for this
            app's still-"testing" OAuth status, Google's silent re-auth flashes
            its own brief "you're not a test user" error popup before failing,
@@ -387,7 +393,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.9";
+var WANDERMARK_VERSION="0.9.10";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -882,15 +888,19 @@ function driveErrText(err){
   if(low.indexOf("are blocked")>=0 || low.indexOf("service_blocked")>=0 || (low.indexOf("blocked")>=0 && low.indexOf("method")>=0))
     return "this API key doesn’t allow the Drive API. In the key’s settings → “API restrictions”, add “Google Drive API” to the allowed list (or choose “Don’t restrict key”).";
   if(low.indexOf("permission")>=0 || low.indexOf("not found")>=0 || low.indexOf("insufficient")>=0)
-    return "the folder isn’t readable — share it “Anyone with the link → Viewer”, and double-check the folder link/ID.";
+    return (driveToken&&Date.now()<driveTokenExp)
+      ? "the signed-in Google account doesn’t have access to this folder — check it was shared with that exact account (and double-check the folder link/ID)."
+      : "the folder isn’t readable. If it’s shared “Anyone with the link”, double-check the link/ID; if it’s shared with specific people instead, sign in (🗂️ Map ▾ → 🔑 Sign in to Google) with the account it was shared with.";
   if(low.indexOf("failed to fetch")>=0 || low.indexOf("networkerror")>=0)
     return "the request was blocked (network, ad-blocker, or a key website-restriction). Try without restrictions first.";
   return m||"unknown error (see the browser console for details).";
 }
+function driveAuthedFetch(url,key){ var authed=driveToken&&Date.now()<driveTokenExp;
+  return fetch(url+(authed?"":(url.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(key)), authed?{headers:{Authorization:"Bearer "+driveToken}}:{}); }
 function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId+"' in parents and trashed=false");
-  var url="https://www.googleapis.com/drive/v3/files?q="+q+"&key="+encodeURIComponent(key)+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
-  fetch(url).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
-function driveFetchFile(id,key,cb){ fetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media&key="+encodeURIComponent(key)).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
+  var url="https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
+  driveAuthedFetch(url,key).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
+function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media",key).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
 var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
 function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
