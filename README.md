@@ -112,8 +112,14 @@ LIB = {
 
 ```js
 {
-  id, name, kind,            // kind: "personal" | "curated"
-  source?, driveId?,         // source:"drive" for Drive-synced maps (read-only)
+  id, name, kind,            // kind: "personal" | "curated" — cosmetic (⭐ icon) only
+  mine,                      // do you own this map? (set at creation; drives the
+                             // "Your maps" vs "Shared with you" grouping — like
+                             // Google My Maps, every map lives on Drive, "mine"
+                             // is always fully editable, "not mine" only if the
+                             // owner granted Drive edit access)
+  source?, driveId?,         // source:"drive" once the map is backed by a Drive file
+  driveModifiedTime?, dirty?,// sync-state bookkeeping, independent of ownership
   places:     [ Place, ... ],
   categories: [ Category, ... ],
   createdAt

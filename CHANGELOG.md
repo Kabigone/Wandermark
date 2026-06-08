@@ -10,6 +10,27 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.14] — Maps are organized by ownership now, not by where they live
+
+### Changed
+- **Merged "My maps" and "☁️ Shared from Drive" into "Your maps" / "Shared with
+  you"** — the same ownership model Google My Maps uses. The old idea of a map
+  living only in your browser until you remembered to "Publish" it is gone:
+  every map you create now publishes to your connected Drive folder right
+  away (and shows up immediately under "Your maps" with its ☁️/Drive status),
+  and any older map that was still sitting locally gets swept up to Drive the
+  moment you connect a folder. "Yours" is always fully editable — rename,
+  duplicate, delete, like before; "shared with you" stays editable only if its
+  owner gave your account Drive edit access, exactly as collaborative editing
+  already worked.
+- The 🗂️ map-button badge and the ⭐ "curated/imported" cue now reflect
+  ownership rather than publish status, so duplicating one of your own already-
+  published maps correctly says "Duplicated" (not "Copied to your maps"), and
+  renaming an owned map now pushes the new name to Drive instead of going
+  stale until some unrelated edit syncs it.
+
+---
+
 ## [0.9.13] — See whose folder you've connected to
 
 ### Added

@@ -51,7 +51,7 @@ front door for this:**
    **📁 Choose shared folder from Drive** — Google's own folder picker opens so
    you can browse and click the folder, no copying links out of Drive.
 
-After that, every map in the folder shows up under **"☁️ Shared from Drive"** in
+After that, every map in the folder shows up under **"Shared with you"** in
 🗂️ Map ▾, and refreshes automatically. Change a file in the folder (or edit a
 shared map right in the app, once you're signed in) and everyone gets the
 update without downloading or importing anything — see "Can we all edit the
