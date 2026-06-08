@@ -10,6 +10,25 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.11] — Sign-in sticks, and folder pick is automatic
+
+### Changed
+- **Sign-in now survives refreshes and tab switches.** The OAuth access token
+  used to live only in a JS variable, so any reload wiped it and brought back
+  the sign-in prompt — even though the token itself was still valid for ~an
+  hour. It's now mirrored to `sessionStorage` and restored on launch, so you
+  only have to sign in again when the token actually expires (or you close the
+  tab), not on every refresh. (Note: this is `sessionStorage`, not
+  `localStorage` — it's scoped to the browser tab/session on purpose, since an
+  access token is a short-lived credential that shouldn't outlive it.)
+- **Folder selection is now automatic when it can be.** Right after you sign
+  in, Wandermark looks for a Drive folder whose name contains "wandermark"
+  (owned by you or shared with you) and connects to it straight away — no
+  picker, no clicking around. The picker only appears if it finds none or more
+  than one candidate, so you can point it at the right one by hand.
+
+---
+
 ## [0.9.10] — Read access for privately-shared folders
 
 ### Added

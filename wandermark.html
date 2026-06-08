@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.10
+  VERSION: 0.9.11
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.11 Two sign-in smoothing changes: (1) your Drive sign-in now survives
+           page refreshes and tab switches (kept in sessionStorage — re-asks
+           only once the ~hour-long token actually expires, not on every
+           reload); (2) right after signing in, Wandermark looks for a Drive
+           folder whose name contains "wandermark" and connects to it
+           automatically — no picker needed unless it can't tell which one.
     0.9.10 Drive sync can now read folders shared privately with specific
            people, not just "Anyone with the link" ones. When you're signed
            in, reading the folder and its map files now uses *your* Google
@@ -393,7 +399,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.10";
+var WANDERMARK_VERSION="0.9.11";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -854,11 +860,9 @@ function mapsModal(){ var personal=[],curated=[],synced=[]; var dcfg=appSettings
   modal.querySelector("#engOSM").onclick=function(){ if(ui.engine==="osm") return; closeModal(); startEngine("osm"); };
   var okl=modal.querySelector("#ownKeyLink"); if(okl) okl.onclick=function(e){ e.preventDefault(); ownKeyModal(); };
   var madv=modal.querySelector("#mAdvanced"); if(madv) madv.onclick=function(e){ e.preventDefault(); driveModal(); };
-  function pickedFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
-    toast("Connected to “"+(name||"folder")+"” — syncing…"); syncDrive({then:function(){ mapsModal(); }}); }
-  var msi=modal.querySelector("#mSignIn"); if(msi) msi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); mapsModal(); }); };
-  var mpf=modal.querySelector("#mPickFolder"); if(mpf) mpf.onclick=function(){ pickDriveFolder(pickedFolder); };
-  var mcf=modal.querySelector("#mChangeFolder"); if(mcf) mcf.onclick=function(e){ e.preventDefault(); pickDriveFolder(pickedFolder); };
+  var msi=modal.querySelector("#mSignIn"); if(msi) msi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); autoConnectFolder(function(){ mapsModal(); }); }); };
+  var mpf=modal.querySelector("#mPickFolder"); if(mpf) mpf.onclick=function(){ pickDriveFolder(connectToFolder); };
+  var mcf=modal.querySelector("#mChangeFolder"); if(mcf) mcf.onclick=function(e){ e.preventDefault(); pickDriveFolder(connectToFolder); };
   if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
   modal.querySelectorAll("[data-go]").forEach(function(el){ el.onclick=function(){ switchMap(el.getAttribute("data-go")); }; });
   modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-ren")]; var nm=prompt("Rename map:",m.name); if(nm!=null){ m.name=nm.trim()||m.name; save(); renderMapBtn(); mapsModal(); } }; });
@@ -903,6 +907,11 @@ function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId
 function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media",key).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
 var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
+var DRIVE_TOKEN_KEY="wandermark:driveToken";
+function saveDriveToken(){ try{ if(window.sessionStorage) sessionStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
+function loadDriveToken(){ try{ var raw=window.sessionStorage&&sessionStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
+  var d=JSON.parse(raw); if(d&&d.t&&d.e>Date.now()){ driveToken=d.t; driveTokenExp=d.e; } }catch(e){} }
+function clearDriveToken(){ try{ if(window.sessionStorage) sessionStorage.removeItem(DRIVE_TOKEN_KEY); }catch(e){} }
 function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
   var s=document.createElement("script"); s.src="https://accounts.google.com/gsi/client"; s.async=true; s.defer=true;
   s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load Google sign-in (only works on the hosted https site, not a local file)."); }; document.head.appendChild(s); }
@@ -910,7 +919,7 @@ function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.cli
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   loadGIS(function(){
     if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
         else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
     pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
@@ -932,6 +941,17 @@ function pickDriveFolder(cb){ ensureDriveToken(function(){ loadPicker(function()
     .setCallback(function(data){ if(data.action===google.picker.Action.PICKED){ var doc=data.docs[0]; cb(doc.id,doc.name); }
       else if(data.action===google.picker.Action.ERROR && data.error) toast("Picker error: "+data.error+" — your Google Cloud project likely needs the “Google Picker API” enabled (and added to the API key's allowed APIs if it's restricted). Use “Advanced” to paste a folder link instead for now."); })
     .build().setVisible(true); }); }); }
+function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
+  toast("Connected to “"+(name||"folder")+"” — syncing…"); syncDrive({then:function(){ mapsModal(); }}); }
+/* Right after sign-in, look for a folder that's obviously "the" Wandermark folder
+   (named e.g. "Wandermark" or "Wandermark maps", owned or shared with this account)
+   and connect to it straight away — no picker needed unless we can't tell which one. */
+function autoConnectFolder(cb){ if(appSettings.drive.folderId){ cb(); return; }
+  var q=encodeURIComponent("name contains 'wandermark' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  fetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name)")+"&pageSize=10",{headers:{Authorization:"Bearer "+driveToken}})
+    .then(function(r){ return r.json(); }).then(function(d){ var files=(d&&d.files)||[];
+      if(files.length===1) connectToFolder(files[0].id,files[0].name); else cb(); })
+    .catch(function(){ cb(); }); }
 function updateSigninBadge(){ var b=document.getElementById("signinBadge"); if(!b) return;
   var d=appSettings.drive||{}; var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
   b.style.display=(d.clientId&&!signedIn)?"":"none"; }
@@ -950,7 +970,7 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
   if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
   loadGIS(function(){ if(!window.google||!google.accounts||!google.accounts.oauth2){ cb(false); return; }
     var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; cb(true); } else cb(false); },
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); cb(true); } else cb(false); },
       error_callback:function(){ cb(false); } });
     client.requestAccessToken({prompt:"none"}); }); }
 function nudgeSignIn(map){ var now=Date.now();
@@ -1041,7 +1061,7 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",folderName:"",key:"
     var fid=driveExtractId(modal.querySelector("#dFolder").value);
     appSettings.drive={folderId:fid,folderName:(fid!==d.folderId?"":d.folderName),key:keyVal,clientId:cidVal,auto:modal.querySelector("#dAuto").checked}; save();
     if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and an API key"); return; } closeModal(); syncDrive({}); };
-  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false}; driveToken=""; save(); closeModal(); updateSigninBadge(); toast("Drive disconnected (synced maps kept)"); }; }
+  var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false}; driveToken=""; driveTokenExp=0; clearDriveToken(); save(); closeModal(); updateSigninBadge(); toast("Drive disconnected (synced maps kept)"); }; }
 
 function categoryModal(){ var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
     return '<div class="catrow" data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span><span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span></div>'; }).join("");
@@ -1220,7 +1240,7 @@ function wireUI(){
   document.getElementById("tvCsv").onclick=exportCSV;
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
-  document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); mapsModal(); }); };
+  document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); autoConnectFolder(function(){ mapsModal(); }); }); };
 
   var menu=document.getElementById("menu");
   document.getElementById("menuBtn").onclick=function(e){ e.stopPropagation(); menu.classList.toggle("on"); };
@@ -1234,7 +1254,7 @@ function wireUI(){
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
   document.getElementById("dayFilter").value=todayCode();
 }
-function boot(){ wireUI();
+function boot(){ wireUI(); loadDriveToken();
   Store.get(STORE_KEY).then(function(val){ var ok=false;
     if(val){ try{ var d=JSON.parse(val);
       if(d&&d.lib&&d.lib.maps&&Object.keys(d.lib.maps).length){ LIB.maps=d.lib.maps; LIB.order=(d.lib.order&&d.lib.order.length)?d.lib.order:Object.keys(d.lib.maps); LIB.activeId=d.lib.activeId; if(d.settings) appSettings=Object.assign({lang:"native"},d.settings); ok=true; }
