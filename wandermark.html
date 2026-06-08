@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.14
+  VERSION: 0.9.15
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.15 Mobile fix: on common phone widths (~360-430px), the search bar used
+           to share its row with the map-name button and the "Sign in to
+           Google" badge and get squeezed down to a bare, untappable icon.
+           It now always gets its own full-width row, so it stays usable.
     0.9.14 Maps are now organized by ownership, like Google My Maps: "Your maps"
            (yours to rename/duplicate/delete, always editable) vs "Shared with
            you" (someone else's — editable only if they gave you Drive access).
@@ -323,9 +327,13 @@
     aside{position:absolute;inset:0 auto 0 0;width:88%;max-width:344px;transform:translateX(-104%);transition:.25s;box-shadow:var(--shadow)}
     aside.open{transform:translateX(0)}
     .mobile-toggle{display:inline-flex}
-    .search-wrap{max-width:none}
     header{flex-wrap:wrap;gap:9px}
-    #mapBtn{max-width:150px}
+    #mapBtn{max-width:140px}
+    #signinBadge{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+    /* Force the search bar onto its own full-width row — at common phone widths
+       (~390-430px) it would otherwise sit alongside the map-name button and the
+       sign-in badge and get flex-shrunk down to a bare unusable icon. */
+    .search-wrap{max-width:none;flex:1 1 100%;order:2}
     .hbtns{order:3;width:100%;flex-wrap:wrap}
   }
 </style>
@@ -416,7 +424,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.14";
+var WANDERMARK_VERSION="0.9.15";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.

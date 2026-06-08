@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.15] — Fix the squished mobile search bar
+
+### Fixed
+- **The search bar could shrink down to an unusable bare icon on phones.**
+  In the header, the search box sat in the same flex row as the map-name
+  button and the "🔑 Sign in to Google" badge. At very common phone widths
+  (roughly 360-430px — most current Android and iPhone models), the row just
+  barely fit without wrapping, so the search box — the only flexible item —
+  got squeezed down to almost nothing instead of wrapping to its own line.
+  It now always gets its own full-width row on phones, so it's reliably
+  visible and tappable regardless of how long the active map's name or the
+  sign-in badge happen to be.
+
+---
+
 ## [0.9.14] — Maps are organized by ownership now, not by where they live
 
 ### Changed
