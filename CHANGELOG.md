@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.16] — Fix sidebar toggle disappearing with "Request Desktop Site"
+
+### Fixed
+- **The ☰ sidebar toggle (and mobile layout) vanished when Chrome Android's
+  "Request Desktop Site" was enabled.** The mobile layout was gated purely on
+  viewport width (`max-width: 820px`). "Request Desktop Site" tells Chrome to
+  report a ~980 px desktop viewport, which is wider than 820 px — so the
+  mobile media query never fired, `.mobile-toggle` stayed `display: none`,
+  and the ☰ button was completely gone (invisible and non-tappable). The
+  sidebar still existed in the DOM but only as a 344 px desktop side-panel
+  scaled down to ~145 px physical pixels — completely impractical.
+
+  The media query now also matches any touch-only device
+  (`(hover: none) and (pointer: coarse)`), which remains true on a phone
+  regardless of the desktop-site flag. Any phone or tablet — whether or not
+  "Request Desktop Site" is on — now always gets the proper off-canvas drawer
+  layout with a working ☰ toggle.
+
+---
+
 ## [0.9.15] — Fix the squished mobile search bar
 
 ### Fixed

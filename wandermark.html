@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.15
+  VERSION: 0.9.16
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.16 Mobile layout now triggers on any touch-only device (hover:none +
+           pointer:coarse), not just on narrow viewports. This fixes the
+           sidebar toggle (☰) and brand title vanishing when Chrome Android's
+           "Request Desktop Site" is enabled — or on any device where the
+           browser reports a wide viewport but is still touch-only.
     0.9.15 Mobile fix: on common phone widths (~360-430px), the search bar used
            to share its row with the map-name button and the "Sign in to
            Google" badge and get squeezed down to a bare, untappable icon.
@@ -323,7 +328,7 @@
   .menu .pop-menu .mi{width:18px;text-align:center;opacity:.7}
 
   .mobile-toggle{display:none}
-  @media (max-width:820px){
+  @media (max-width:820px),(hover:none) and (pointer:coarse){
     aside{position:absolute;inset:0 auto 0 0;width:88%;max-width:344px;transform:translateX(-104%);transition:.25s;box-shadow:var(--shadow)}
     aside.open{transform:translateX(0)}
     .mobile-toggle{display:inline-flex}
@@ -424,7 +429,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.15";
+var WANDERMARK_VERSION="0.9.16";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
