@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.12] — Background sync survives a long session
+
+### Fixed
+- **Quiet Drive updates could go stale mid-session.** The background pull
+  (the thing that shows collaborators' new places without you refreshing)
+  reads the folder using your signed-in Google account when you're connected
+  — but if your ~hour-long token quietly expired while the tab stayed open,
+  it silently fell back to the public API key, which can't see a **privately
+  shared** folder. Updates would then stop appearing — looking like "spotty"
+  sync — until you noticed the 🔑 Sign in badge and reconnected by hand. Now
+  the periodic check refreshes an expired-but-known token silently first (the
+  same no-popup trick auto-push already relies on), so a long session keeps
+  pulling fresh data without you having to do anything.
+
+---
+
 ## [0.9.11] — Sign-in sticks, and folder pick is automatic
 
 ### Changed

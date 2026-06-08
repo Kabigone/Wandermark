@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.11
+  VERSION: 0.9.12
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.12 Background sync stays connected through a long session: if your
+           ~hour-long sign-in token lapses while the app is open, the quiet
+           periodic Drive check now silently refreshes it first (the same
+           trick auto-push already used) instead of quietly falling back to
+           the public key — which can't see privately-shared folders — and
+           going dark until your next manual sign-in.
     0.9.11 Two sign-in smoothing changes: (1) your Drive sign-in now survives
            page refreshes and tab switches (kept in sessionStorage — re-asks
            only once the ~hour-long token actually expires, not on every
@@ -399,7 +405,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.11";
+var WANDERMARK_VERSION="0.9.12";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -970,7 +976,7 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
   if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
   loadGIS(function(){ if(!window.google||!google.accounts||!google.accounts.oauth2){ cb(false); return; }
     var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); cb(true); } else cb(false); },
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); updateSigninBadge(); cb(true); } else cb(false); },
       error_callback:function(){ cb(false); } });
     client.requestAccessToken({prompt:"none"}); }); }
 function nudgeSignIn(map){ var now=Date.now();
@@ -1010,7 +1016,13 @@ var lastDriveSyncAt=0;
 function pollDriveIfDue(minGapMs){ var d=appSettings.drive||{};
   if(!d.folderId||!d.key||document.hidden) return;
   if(Date.now()-lastDriveSyncAt<minGapMs) return;
-  lastDriveSyncAt=Date.now(); syncDrive({silent:true}); }
+  lastDriveSyncAt=Date.now();
+  /* If we've signed in before but the ~hour-long token has since lapsed mid-session,
+     silently refresh it first — otherwise this read-only pull would quietly fall back
+     to the public API key, which can't see a privately-shared folder, and updates
+     would stop appearing until the next manual sign-in (looks like "spotty" sync). */
+  if(driveToken && Date.now()>=driveTokenExp && d.clientId) trySilentDriveToken(function(){ syncDrive({silent:true}); });
+  else syncDrive({silent:true}); }
 function startDrivePolling(){
   setInterval(function(){ pollDriveIfDue(90000); },120000);
   document.addEventListener("visibilitychange",function(){ if(!document.hidden) pollDriveIfDue(45000); });
