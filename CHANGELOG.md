@@ -10,6 +10,36 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.19] — Share link fixes + collaborator management
+
+### Added
+- **Collaborator management.** New "👥 Manage access" button in the share
+  modal and a "👥 Share" button on each of your Drive-published maps in the
+  maps list. Opens an "Access" modal showing:
+  - The share link with a copy button
+  - A toggle for "Anyone with the link can view" (creates/removes the Drive
+    `anyone → reader` permission, no sign-in required to view)
+  - Current collaborators (name, email, role) with a Remove button
+  - "Add person" form: enter any Google email, pick Editor or Viewer, hit Add
+  Changes sync immediately to the Drive file's permissions.
+
+### Changed
+- **Single share link instead of two.** The old `?view=<id>` (always read-only)
+  and `?map=<id>` (editable after sign-in) links have been merged into one:
+  `?map=<id>`. Access level is determined by whether the recipient is signed in
+  and has Drive write access. Old `?view=` links from v0.9.18 still open
+  correctly (treated as `?map=` links going forward).
+
+### Fixed
+- **Empty "My map" no longer appears** when opening a shared link in a fresh
+  browser session. The default placeholder map created at boot is removed as
+  soon as the linked map loads.
+- **Opening the same link twice no longer creates duplicates.** If a map with
+  the same Drive file ID is already in the map list, it's updated in place
+  rather than added as a second entry.
+
+---
+
 ## [0.9.18] — Link-based map sharing
 
 ### Added

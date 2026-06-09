@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.18
+  VERSION: 0.9.19
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.19 Share link fixes + collaborator management. Single share link
+           (?map=<id>) instead of two. No duplicate map entries when opening
+           the same link twice. Empty default "My map" no longer appears when
+           opening a shared link in a fresh session. New "👥 Manage access"
+           button: add/remove specific people as Editors or Viewers, and
+           toggle "Anyone with link can view" — all from within Wandermark.
     0.9.18 Link-based sharing: "Share this map (code)" now also shows
            copyable URLs when the map is on Drive. One link is public /
            view-only (no sign-in needed, set Drive to "Anyone can view");
@@ -441,7 +447,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.18";
+var WANDERMARK_VERSION="0.9.19";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -877,7 +883,8 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
   function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=!m.mine?"☁️ ":(m.kind==="curated"?"⭐ ":"");
     var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.driveId?(m.dirty?"⤴ Push edits":"⤴ Update on Drive"):"⤴ Publish to Drive")+'</button>':"";
     var acts; if(!m.mine){ acts=pub+'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
-    else { acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
+    else { var shareBtn=m.driveId?'<button class="mact" data-share="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">👥 Share</button>':'';
+      acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+shareBtn+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
     return '<div class="mrow'+(active?" active":"")+'" data-id="'+m.id+'"><div class="mname" data-go="'+m.id+'">'+ic+esc(m.name)+(m.dirty?' <span style="color:var(--stamp)">●</span>':"")+'<span class="cnt">'+(m.places?m.places.length:0)+" places</span></div>"+acts+"</div>"; }).join(""); }
   var driveOn=!!(dcfg.folderId&&dcfg.key);
   var signedIn=!!(driveToken&&Date.now()<driveTokenExp), hasClient=!!dcfg.clientId;
@@ -929,6 +936,7 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
     delete LIB.maps[id]; LIB.order=LIB.order.filter(function(x){return x!==id;}); if(LIB.activeId===id) setActive(LIB.order[0]);
     save(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); } mapsModal(); toast("Map deleted"); }; });
   modal.querySelectorAll("[data-pub]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-pub")]; if(m) driveSaveMap(m,function(){ mapsModal(); }); }; });
+  modal.querySelectorAll("[data-share]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-share")]; if(m){ closeModal(); accessModal(m); } }; });
   var go=function(){ var nm=modal.querySelector("#newMapName").value.trim(); if(!nm){ toast("Name your map"); return; } var id=newMap(nm,"personal"); publishNewMap(id); switchMap(id); };
   modal.querySelector("#newMapGo").onclick=go; modal.querySelector("#newMapName").addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
 
@@ -1207,21 +1215,17 @@ function shareModal(){
   var base=location.origin+location.pathname;
   var linkHtml='';
   if(state.driveId){
-    var vlink=base+'?view='+encodeURIComponent(state.driveId);
-    var clink=base+'?map='+encodeURIComponent(state.driveId);
+    var slink=base+'?map='+encodeURIComponent(state.driveId);
     linkHtml='<div style="margin-bottom:20px">'+
-      '<div style="font-weight:600;font-size:13px;margin-bottom:12px">🔗 Share links</div>'+
-      '<div style="margin-bottom:10px">'+
-        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Public — view only, no sign-in needed <span style="opacity:.6">(requires "Anyone with link → Viewer" in Drive)</span></div>'+
-        '<div class="linkRow"><input readonly value="'+esc(vlink)+'" id="vlinkIn"><button class="pillbtn" data-copy="v">📋 Copy</button></div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
+        '<div style="font-weight:600;font-size:13px">🔗 Share link</div>'+
+        '<button class="pillbtn" id="manageAccessBtn" style="font-size:11px;padding:3px 9px;margin-left:auto;background:var(--teal)">👥 Manage access</button>'+
       '</div>'+
-      '<div>'+
-        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Collaborative — signed-in recipients can edit <span style="opacity:.6">(share them as Editor in Drive)</span></div>'+
-        '<div class="linkRow"><input readonly value="'+esc(clink)+'" id="clinkIn"><button class="pillbtn" data-copy="c">📋 Copy</button></div>'+
-      '</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Anyone you\'ve given access in Drive can open this. They can edit after signing in.</div>'+
+      '<div class="linkRow"><input readonly value="'+esc(slink)+'" id="slinkIn"><button class="pillbtn" data-copy="s">📋 Copy</button></div>'+
     '</div>';
   } else {
-    linkHtml='<p class="hint" style="margin-bottom:16px">💡 Publish this map to Drive to get shareable links.</p>';
+    linkHtml='<p class="hint" style="margin-bottom:16px">💡 Publish this map to Drive to get a shareable link.</p>';
   }
   var code="WMK1."+btoa(unescape(encodeURIComponent(JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories}))));
   openModal('<div class="mh"><div><h2>Share "'+esc(state.name)+'"</h2></div><button class="close">✕</button></div>'+
@@ -1234,8 +1238,8 @@ function shareModal(){
   modal.querySelector("#copyCode").onclick=function(){ var ta=modal.querySelector("#shareCode"); ta.select(); if(navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function(){toast("Code copied");}); else { document.execCommand("copy"); toast("Code copied"); } };
   if(state.driveId){
     function copyLink(val){ if(navigator.clipboard) navigator.clipboard.writeText(val).then(function(){toast("Link copied");}); else { var ta=document.createElement("textarea"); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast("Link copied"); } }
-    modal.querySelector('[data-copy="v"]').onclick=function(){ copyLink(base+'?view='+encodeURIComponent(state.driveId)); };
-    modal.querySelector('[data-copy="c"]').onclick=function(){ copyLink(base+'?map='+encodeURIComponent(state.driveId)); };
+    modal.querySelector('[data-copy="s"]').onclick=function(){ copyLink(base+'?map='+encodeURIComponent(state.driveId)); };
+    var mab=modal.querySelector('#manageAccessBtn'); if(mab) mab.onclick=function(){ closeModal(); accessModal(state); };
   }
 }
 function importCodeModal(){ openModal('<div class="mh"><div><h2>Import from code</h2><p>Paste a Wandermark code a friend shared.</p></div><button class="close">✕</button></div>'+
@@ -1383,8 +1387,7 @@ function boot(){ wireUI(); loadDriveToken();
 
 function parseLinkParam(){
   var s=location.search;
-  var m=s.match(/[?&]view=([^&#]+)/); if(m) return {id:decodeURIComponent(m[1]),mode:"view"};
-  m=s.match(/[?&]map=([^&#]+)/); if(m) return {id:decodeURIComponent(m[1]),mode:"collab"};
+  var m=s.match(/[?&](?:view|map)=([^&#]+)/); if(m) return {id:decodeURIComponent(m[1]),mode:"collab"};
   return null; }
 
 function loadLinkMap(id,mode){
@@ -1399,15 +1402,31 @@ function loadLinkMap(id,mode){
     .then(function(data){
       if(!data) return;
       var isSignedIn=!!(driveToken&&Date.now()<driveTokenExp);
-      var mid=uid();
-      var m={id:mid,name:data.name||"Shared map",kind:data.kind||"personal",mine:false,
-        source:"link",driveId:id,
-        places:(data.places||[]).map(normalizePlace),
-        categories:(data.categories&&data.categories.length)?data.categories:freshCats(),
-        createdAt:Date.now()};
-      LIB.maps[mid]=m; LIB.order.unshift(mid); LIB.activeId=mid; state=m;
+      // Reuse an existing entry for this driveId to prevent duplicates when the same link is opened twice
+      var existingId=null;
+      LIB.order.forEach(function(oid){ if(LIB.maps[oid]&&LIB.maps[oid].driveId===id) existingId=oid; });
+      var mid=existingId||uid();
+      if(existingId){
+        var m2=LIB.maps[mid]; m2.name=data.name||m2.name;
+        m2.places=(data.places||[]).map(normalizePlace);
+        if(data.categories&&data.categories.length) m2.categories=data.categories;
+      } else {
+        LIB.maps[mid]={id:mid,name:data.name||"Shared map",kind:data.kind||"personal",mine:false,
+          source:"link",driveId:id,
+          places:(data.places||[]).map(normalizePlace),
+          categories:(data.categories&&data.categories.length)?data.categories:freshCats(),
+          createdAt:Date.now()};
+        LIB.order.unshift(mid);
+        // Remove any empty auto-created default map that boot() generated before this link map loaded
+        LIB.order=LIB.order.filter(function(oid){
+          if(oid===mid) return true;
+          var om=LIB.maps[oid];
+          if(om&&om.mine&&!om.driveId&&om.source!=="link"&&(!om.places||!om.places.length)){ delete LIB.maps[oid]; return false; }
+          return true; });
+      }
+      LIB.activeId=mid; state=LIB.maps[mid];
       ui.linkMode=mode;
-      ui.readOnly=(mode==="view")||(mode==="collab"&&!isSignedIn);
+      ui.readOnly=!isSignedIn;
       document.body.classList.toggle("read-only",ui.readOnly);
       renderMapBtn(); renderAll(); updateReadOnlyBar();
       if(ui.mapReady&&state.places.length) Engine.fit(state.places); })
@@ -1419,13 +1438,82 @@ function updateReadOnlyBar(){
   var btn=document.getElementById("roSignIn");
   if(!ui.linkMode||!ui.readOnly){ bar.classList.remove("on"); return; }
   bar.classList.add("on");
-  msg.textContent='"'+(state&&state.name||"Shared map")+'" — view only'+(ui.linkMode==="collab"?" · sign in to edit":"");
-  btn.style.display=ui.linkMode==="collab"?"":"none"; }
+  msg.textContent='"'+(state&&state.name||"Shared map")+'" — view only · sign in to edit';
+  btn.style.display=""; }
 
 function unlockCollabEdit(){
   if(ui.linkMode!=="collab") return;
   ui.readOnly=false; document.body.classList.remove("read-only");
   updateReadOnlyBar(); renderAll(); toast("You can now edit this map"); }
+
+function accessModal(m){
+  var isSignedIn=!!(driveToken&&Date.now()<driveTokenExp);
+  var base=location.origin+location.pathname;
+  var slink=base+'?map='+encodeURIComponent(m.driveId);
+  function copyLinkAcc(val){ if(navigator.clipboard) navigator.clipboard.writeText(val).then(function(){toast("Link copied");}); else { var ta=document.createElement("textarea"); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast("Link copied"); } }
+  function permFetch(method,path,body,cb){
+    var opts={method:method,headers:{"Authorization":"Bearer "+driveToken}};
+    if(body){ opts.headers["Content-Type"]="application/json"; opts.body=JSON.stringify(body); }
+    fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(m.driveId)+path,opts)
+      .then(function(r){ if(!r.ok) return r.json().then(function(d){ throw d; }); return method==="DELETE"?null:r.json(); })
+      .then(function(d){ cb(null,d); }).catch(function(e){ cb(e||"error"); }); }
+  function render(userPerms,anyonePerms){
+    var hasAnyone=!!(anyonePerms&&anyonePerms.length);
+    var permRows=userPerms.length?userPerms.map(function(p){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">'+esc(p.displayName||p.emailAddress||"")+'</div>'+
+        (p.emailAddress&&p.emailAddress!==p.displayName?'<div style="font-size:11px;color:var(--muted)">'+esc(p.emailAddress)+'</div>':'')+
+        '</div><div style="font-size:12px;color:var(--muted);white-space:nowrap">'+(p.role==="writer"?"Editor":"Viewer")+'</div>'+
+        (isSignedIn?'<button class="mact" data-rmperm="'+esc(p.id)+'" style="font-size:11px;padding:2px 7px">✕</button>':'')+
+      '</div>'; }).join('')
+    :'<p class="hint">No individual collaborators yet.</p>';
+    openModal('<div class="mh"><div><h2>Share "'+esc(m.name)+'"</h2></div><button class="close">✕</button></div>'+
+      '<div class="mb">'+
+      '<div style="font-weight:600;font-size:13px;margin-bottom:6px">🔗 Share link</div>'+
+      '<div class="linkRow" style="margin-bottom:14px"><input readonly value="'+esc(slink)+'"><button class="pillbtn" id="accCopyLink">📋 Copy</button></div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line-2);background:#f7f5ee">'+
+        '<div style="flex:1"><div style="font-weight:500;font-size:13px">🌐 Anyone with the link can view</div>'+
+        '<div style="font-size:11.5px;color:var(--muted)">No sign-in needed to view (read-only)</div></div>'+
+        (isSignedIn?'<button class="pillbtn" id="anyoneToggle" style="font-size:12px;padding:4px 12px;background:'+(hasAnyone?'var(--teal)':'#bbb')+'">'+(hasAnyone?'On':'Off')+'</button>':'')+
+      '</div>'+
+      '<div style="font-weight:600;font-size:13px;margin-bottom:8px">👤 People with access</div>'+
+      '<div id="permList" style="margin-bottom:12px">'+permRows+'</div>'+
+      (isSignedIn?
+        '<div style="font-size:12px;font-weight:600;margin-bottom:5px">Add person</div>'+
+        '<div class="row2"><input id="collabEmail" type="email" placeholder="email@example.com" style="flex:1;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--line-2)">'+
+        '<select id="collabRole" style="font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--line-2)">'+
+          '<option value="writer">Editor</option><option value="reader">Viewer</option>'+
+        '</select><button class="pillbtn" id="addCollabBtn" style="background:var(--teal)">Add</button></div>'+
+        '<p class="hint" style="margin-top:6px">Editor: can add/edit/delete places. Viewer: can only view.</p>'
+      :
+        '<p class="hint"><button class="pillbtn" id="accSignIn" style="background:var(--teal);font-size:12px">🔑 Sign in to Google</button> &nbsp;to manage who can access this map.</p>'
+      )+'</div>');
+    modal.querySelector(".close").onclick=closeModal;
+    modal.querySelector("#accCopyLink").onclick=function(){ copyLinkAcc(slink); };
+    if(!isSignedIn){
+      var asi=modal.querySelector("#accSignIn"); if(asi) asi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); accessModal(m); }); };
+      return; }
+    modal.querySelector("#anyoneToggle").onclick=function(){
+      if(hasAnyone){ permFetch("DELETE","/permissions/"+encodeURIComponent(anyonePerms[0].id),null,function(e){ if(e){ toast("Couldn't update permissions"); return; } toast("Public link disabled"); accessModal(m); }); }
+      else { permFetch("POST","/permissions",{type:"anyone",role:"reader"},function(e){ if(e){ toast("Couldn't enable public access"); return; } toast("Public viewing enabled"); accessModal(m); }); } };
+    modal.querySelectorAll("[data-rmperm]").forEach(function(el){
+      el.onclick=function(){ var pid=el.getAttribute("data-rmperm"); permFetch("DELETE","/permissions/"+encodeURIComponent(pid),null,function(e){ if(e){ toast("Couldn't remove"); return; } toast("Removed collaborator"); accessModal(m); }); }; });
+    var emailIn=modal.querySelector("#collabEmail"), roleIn=modal.querySelector("#collabRole");
+    function addCollab(){ var email=emailIn.value.trim(); if(!email){ toast("Enter an email address"); return; }
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast("Enter a valid email address"); return; }
+      var role=roleIn.value; toast("Adding…");
+      permFetch("POST","/permissions",{type:"user",role:role,emailAddress:email},function(e){
+        if(e){ toast("Couldn't add collaborator — check the email address"); return; }
+        toast("Added "+email+" as "+(role==="writer"?"Editor":"Viewer")); accessModal(m); }); }
+    modal.querySelector("#addCollabBtn").onclick=addCollab;
+    emailIn.addEventListener("keydown",function(e){ if(e.key==="Enter") addCollab(); }); }
+  if(!isSignedIn){ render([],[]); return; }
+  toast("Loading permissions…");
+  permFetch("GET","/permissions?fields="+encodeURIComponent("permissions(id,emailAddress,displayName,role,type)"),null,function(e,d){
+    if(e){ toast("Couldn't load permissions"); render([],[]); return; }
+    var all=d.permissions||[];
+    render(all.filter(function(p){return p.type==="user"||p.type==="group";}),
+           all.filter(function(p){return p.type==="anyone";})); }); }
 
 boot();
 })();
