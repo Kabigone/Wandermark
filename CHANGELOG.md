@@ -10,6 +10,32 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.17] — Make sidebar always accessible regardless of browser mode
+
+### Fixed
+- **The ☰ sidebar toggle and the sidebar itself were inaccessible on some
+  phones regardless of how the CSS media queries were tuned.** The entire
+  "show the toggle / make the sidebar off-canvas" mechanism was conditional
+  on a CSS media query matching. On some devices (e.g., "Request Desktop
+  Site" mode in Chrome Android, unusual browser configurations, WebViews
+  with non-standard viewport or pointer reporting) no combination of
+  `max-width` and `pointer: coarse` was reliably matching.
+
+  The fix removes the dependency on media queries for the two critical
+  behaviors:
+  1. **The ☰ toggle is now always visible** — `display:inline-flex` in the
+     base CSS, no media query required.
+  2. **The sidebar is now always off-canvas** — `position:absolute` +
+     `transform:translateX(-104%)` in the base CSS (moved out of the media
+     query). It slides in/out the same way at every viewport width.
+
+  On a non-touch desktop (mouse/keyboard), the sidebar opens automatically
+  on boot so the experience is identical to before. On any touch device —
+  phone or tablet, narrow or wide, normal or "Request Desktop Site" — the
+  sidebar starts closed and ☰ always opens it.
+
+---
+
 ## [0.9.16] — Fix sidebar toggle disappearing with "Request Desktop Site"
 
 ### Fixed
