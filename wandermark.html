@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.17
+  VERSION: 0.9.18
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.18 Link-based sharing: "Share this map (code)" now also shows
+           copyable URLs when the map is on Drive. One link is public /
+           view-only (no sign-in needed, set Drive to "Anyone can view");
+           the other is collaborative (sign in to edit). Opening a link
+           loads the map in the appropriate read-only or editable mode.
+           index.html redirect now preserves URL query parameters.
     0.9.17 The sidebar is now always accessible regardless of browser mode or
            viewport width. The ☰ toggle is always visible (no longer hidden
            by a media query). On desktop (non-touch) the sidebar opens
@@ -341,6 +347,11 @@
     .search-wrap{max-width:none;flex:1 1 100%;order:2}
     .hbtns{order:3;width:100%;flex-wrap:wrap}
   }
+  #roBar{background:#fef3e2;border-bottom:1px solid rgba(224,138,47,.35);padding:7px 18px;font-size:13px;display:none;align-items:center;gap:10px;flex-wrap:wrap;z-index:590}
+  #roBar.on{display:flex}
+  body.read-only .search-wrap{display:none}
+  .linkRow{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .linkRow input{flex:1;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--line-2);background:#fffdf6}
 </style>
 
 <div id="app">
@@ -371,6 +382,7 @@
       </div>
     </div>
   </header>
+  <div id="roBar"><span id="roMsg"></span><button class="btn" id="roSignIn" style="display:none;margin-left:auto;font-size:12px;padding:4px 10px;background:var(--stamp);color:#fdf3ee;border-radius:8px">🔑 Sign in to edit</button></div>
 
   <main>
     <aside id="aside">
@@ -429,7 +441,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.17";
+var WANDERMARK_VERSION="0.9.18";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -464,7 +476,7 @@ var STORE_KEY="wandermark:data", GKEY_KEY="wandermark:gkey";
 var appSettings={lang:"native",drive:{folderId:"",folderName:"",key:"",clientId:"",auto:false}};
 var LIB={activeId:null,order:[],maps:{}};
 var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
-var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null};
+var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null,linkMode:null,readOnly:false};
 var gkey="", gkeyBlocked=false;
 var markers={};
 
@@ -616,16 +628,25 @@ function makePopupNode(p){ var c=catById(p.categoryId);
   var links='<div class="plinks">'+(p.website?'<a target="_blank" rel="noopener" href="'+esc(p.website)+'">🌐 Website</a>':"")+
     '<a target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">🍽 Tabelog</a>'+
     '<a target="_blank" rel="noopener" href="'+igUrl(p)+'">📷 Instagram</a></div>';
+  var editable=!ui.readOnly;
   node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
     '<span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
-    hoursBlockHtml(p)+links+'<select class="ppcat">'+opts+"</select>"+
-    '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
-    '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
-    '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
-    '<button class="ppsave">Save</button><button class="ppdel">Delete</button></div>';
-  node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
-  node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
+    hoursBlockHtml(p)+links+
+    (editable?
+      '<select class="ppcat">'+opts+"</select>"+
+      '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
+      '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
+      '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
+      '<button class="ppsave">Save</button><button class="ppdel">Delete</button></div>'
+    :
+      (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
+      ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":"")+
+      '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a></div>');
+  if(editable){
+    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
+    node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
+  }
   return node; }
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
@@ -1182,12 +1203,41 @@ function ownKeyModal(){ var hasOwn=!!(gkey&&gkey!==CONFIG.apiKey);
   modal.querySelector("#gkeySave").onclick=function(){ var v=modal.querySelector("#gkeyIn").value.trim(); if(!v){ toast("Paste a key first"); return; } gkey=v; gkeyBlocked=false; Store.set(GKEY_KEY,v); closeModal(); toast("Connecting to Google…"); startEngine("google"); };
   if(hasOwn) modal.querySelector("#gkeyOff").onclick=function(){ gkey=CONFIG.apiKey||""; gkeyBlocked=false; Store.set(GKEY_KEY,""); closeModal(); toast("Connecting…"); startEngine(gkey?"google":"osm"); }; }
 
-function shareModal(){ var code="WMK1."+btoa(unescape(encodeURIComponent(JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories}))));
-  openModal('<div class="mh"><div><h2>Share “'+esc(state.name)+'”</h2><p>'+state.places.length+' places · send the code; a friend pastes it into “Import from code”.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><textarea id="shareCode" readonly>'+code+'</textarea><button class="pillbtn" id="copyCode">📋 Copy code</button>'+
-    '<p class="hint" style="margin-top:14px">Prefer a file? Use <b>Export this map (JSON)</b> for a full copy or <b>CSV</b> for a spreadsheet — both import back in as a new map.</p></div>');
+function shareModal(){
+  var base=location.origin+location.pathname;
+  var linkHtml='';
+  if(state.driveId){
+    var vlink=base+'?view='+encodeURIComponent(state.driveId);
+    var clink=base+'?map='+encodeURIComponent(state.driveId);
+    linkHtml='<div style="margin-bottom:20px">'+
+      '<div style="font-weight:600;font-size:13px;margin-bottom:12px">🔗 Share links</div>'+
+      '<div style="margin-bottom:10px">'+
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Public — view only, no sign-in needed <span style="opacity:.6">(requires "Anyone with link → Viewer" in Drive)</span></div>'+
+        '<div class="linkRow"><input readonly value="'+esc(vlink)+'" id="vlinkIn"><button class="pillbtn" data-copy="v">📋 Copy</button></div>'+
+      '</div>'+
+      '<div>'+
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Collaborative — signed-in recipients can edit <span style="opacity:.6">(share them as Editor in Drive)</span></div>'+
+        '<div class="linkRow"><input readonly value="'+esc(clink)+'" id="clinkIn"><button class="pillbtn" data-copy="c">📋 Copy</button></div>'+
+      '</div>'+
+    '</div>';
+  } else {
+    linkHtml='<p class="hint" style="margin-bottom:16px">💡 Publish this map to Drive to get shareable links.</p>';
+  }
+  var code="WMK1."+btoa(unescape(encodeURIComponent(JSON.stringify({v:1,name:state.name,kind:state.kind,places:state.places,categories:state.categories}))));
+  openModal('<div class="mh"><div><h2>Share "'+esc(state.name)+'"</h2></div><button class="close">✕</button></div>'+
+    '<div class="mb">'+linkHtml+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:6px">📋 Share code (offline snapshot)</div>'+
+    '<p style="font-size:12px;color:var(--muted);margin:0 0 6px">'+state.places.length+' places · paste into "Import from code" on any device.</p>'+
+    '<textarea id="shareCode" readonly>'+code+'</textarea><button class="pillbtn" id="copyCode">📋 Copy code</button>'+
+    '<p class="hint" style="margin-top:14px">Prefer a file? Use <b>Export this map (JSON)</b> or <b>CSV</b>.</p></div>');
   modal.querySelector(".close").onclick=closeModal;
-  modal.querySelector("#copyCode").onclick=function(){ var ta=modal.querySelector("#shareCode"); ta.select(); if(navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function(){toast("Code copied");}); else { document.execCommand("copy"); toast("Code copied"); } }; }
+  modal.querySelector("#copyCode").onclick=function(){ var ta=modal.querySelector("#shareCode"); ta.select(); if(navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function(){toast("Code copied");}); else { document.execCommand("copy"); toast("Code copied"); } };
+  if(state.driveId){
+    function copyLink(val){ if(navigator.clipboard) navigator.clipboard.writeText(val).then(function(){toast("Link copied");}); else { var ta=document.createElement("textarea"); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast("Link copied"); } }
+    modal.querySelector('[data-copy="v"]').onclick=function(){ copyLink(base+'?view='+encodeURIComponent(state.driveId)); };
+    modal.querySelector('[data-copy="c"]').onclick=function(){ copyLink(base+'?map='+encodeURIComponent(state.driveId)); };
+  }
+}
 function importCodeModal(){ openModal('<div class="mh"><div><h2>Import from code</h2><p>Paste a Wandermark code a friend shared.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><textarea id="impCode" placeholder="WMK1.…"></textarea><div style="display:flex;gap:8px;margin-top:10px"><button class="pillbtn" id="impNew" style="background:var(--teal)">🗂️ Import as new map</button><button class="pillbtn" id="impAdd">＋ Add to current map</button></div></div>');
   modal.querySelector(".close").onclick=closeModal;
@@ -1293,7 +1343,8 @@ function wireUI(){
   document.getElementById("tvCsv").onclick=exportCSV;
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
-  document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); autoConnectFolder(function(){ mapsModal(); }); }); };
+  document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); if(ui.linkMode==="collab"&&ui.readOnly){ unlockCollabEdit(); } else autoConnectFolder(function(){ mapsModal(); }); }); };
+  document.getElementById("roSignIn").onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); unlockCollabEdit(); }); };
 
   var menu=document.getElementById("menu");
   document.getElementById("menuBtn").onclick=function(e){ e.stopPropagation(); menu.classList.toggle("on"); };
@@ -1327,7 +1378,55 @@ function boot(){ wireUI(); loadDriveToken();
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
-      startDrivePolling(); }); }); }
+      startDrivePolling();
+      var lp=parseLinkParam(); if(lp) loadLinkMap(lp.id,lp.mode); }); }); }
+
+function parseLinkParam(){
+  var s=location.search;
+  var m=s.match(/[?&]view=([^&#]+)/); if(m) return {id:decodeURIComponent(m[1]),mode:"view"};
+  m=s.match(/[?&]map=([^&#]+)/); if(m) return {id:decodeURIComponent(m[1]),mode:"collab"};
+  return null; }
+
+function loadLinkMap(id,mode){
+  var key=appSettings.drive.key||CONFIG.apiKey||"";
+  driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?alt=media",key)
+    .then(function(r){
+      if(!r.ok){
+        if(r.status===401||r.status===403){ ui.linkMode=mode; ui.readOnly=true; updateReadOnlyBar(); toast("Sign in to Google to view this map"); }
+        else toast("Couldn't load shared map ("+r.status+").");
+        return null; }
+      return r.json(); })
+    .then(function(data){
+      if(!data) return;
+      var isSignedIn=!!(driveToken&&Date.now()<driveTokenExp);
+      var mid=uid();
+      var m={id:mid,name:data.name||"Shared map",kind:data.kind||"personal",mine:false,
+        source:"link",driveId:id,
+        places:(data.places||[]).map(normalizePlace),
+        categories:(data.categories&&data.categories.length)?data.categories:freshCats(),
+        createdAt:Date.now()};
+      LIB.maps[mid]=m; LIB.order.unshift(mid); LIB.activeId=mid; state=m;
+      ui.linkMode=mode;
+      ui.readOnly=(mode==="view")||(mode==="collab"&&!isSignedIn);
+      document.body.classList.toggle("read-only",ui.readOnly);
+      renderMapBtn(); renderAll(); updateReadOnlyBar();
+      if(ui.mapReady&&state.places.length) Engine.fit(state.places); })
+    .catch(function(){ toast("Couldn't load shared map."); }); }
+
+function updateReadOnlyBar(){
+  var bar=document.getElementById("roBar");
+  var msg=document.getElementById("roMsg");
+  var btn=document.getElementById("roSignIn");
+  if(!ui.linkMode||!ui.readOnly){ bar.classList.remove("on"); return; }
+  bar.classList.add("on");
+  msg.textContent='"'+(state&&state.name||"Shared map")+'" — view only'+(ui.linkMode==="collab"?" · sign in to edit":"");
+  btn.style.display=ui.linkMode==="collab"?"":"none"; }
+
+function unlockCollabEdit(){
+  if(ui.linkMode!=="collab") return;
+  ui.readOnly=false; document.body.classList.remove("read-only");
+  updateReadOnlyBar(); renderAll(); toast("You can now edit this map"); }
+
 boot();
 })();
 </script>

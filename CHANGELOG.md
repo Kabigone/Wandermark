@@ -10,6 +10,36 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.18] — Link-based map sharing
+
+### Added
+- **Share links for public and collaborative access.** The "Share this map
+  (code)" modal (`⋯` menu → Share) now shows two copyable URLs when the
+  active map has been published to Drive:
+
+  - **Public link** (`?view=<driveFileId>`) — view-only, no sign-in needed.
+    Set the Drive file's sharing to "Anyone with the link → Viewer" and
+    anyone can open the map and explore it. Editing controls (Save/Delete
+    in place popups, search to add places) are hidden.
+  - **Collaborative link** (`?map=<driveFileId>`) — opens in view-only mode
+    for anyone not signed in, but shows a "Sign in to edit" bar at the top.
+    After signing in, the full editing UI unlocks. You must share the Drive
+    file with specific people as Editor for them to save changes.
+
+  If the map hasn't been published to Drive yet, the share modal shows a
+  hint to publish first.
+
+- **URL param routing.** Opening `wandermark.html?view=<id>` or
+  `?map=<id>` fetches the Drive file at boot and shows it as the active
+  map. The link can be opened by anyone — they don't need to have ever
+  used Wandermark before.
+
+- **`index.html` redirect now preserves query parameters**, so short links
+  like `kabigone.github.io/Wandermark/?view=<id>` (without `wandermark.html`)
+  also work correctly.
+
+---
+
 ## [0.9.17] — Make sidebar always accessible regardless of browser mode
 
 ### Fixed
