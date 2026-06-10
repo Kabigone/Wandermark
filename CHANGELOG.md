@@ -10,6 +10,15 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.22] — Enrich from Google: diagnostic logging
+
+### Added
+- "✨ Enrich from Google" now logs the Places API status code to the console
+  (`[enrich] ...`) for any lookup that doesn't return `OK`, to help diagnose
+  why places aren't being found/updated.
+
+---
+
 ## [0.9.21] — Enrich from Google: don't hang on blocked requests
 
 ### Fixed

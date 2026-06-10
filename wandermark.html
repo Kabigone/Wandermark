@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.21
+  VERSION: 0.9.22
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.22 "Enrich from Google" now logs Places API status codes to the
+           console for any lookup that doesn't return OK, to help diagnose
+           why enrichment isn't finding/updating places.
     0.9.21 "Enrich from Google" no longer hangs forever if a Places API
            call is silently dropped (e.g. by an ad blocker): each lookup
            now times out after 8s and moves on, with progress toasts every
@@ -462,7 +465,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.21";
+var WANDERMARK_VERSION="0.9.22";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -796,14 +799,17 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
     function step(){ setTimeout(next,150); }
     if(p.placeId){
       withTimeout(8000,function(cb){ placesService.getDetails({placeId:p.placeId,fields:GET_FIELDS},function(d,st){
+          if(st!==google.maps.places.PlacesServiceStatus.OK) console.log("[enrich] getDetails",p.name,st);
           cb((st===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry)?d:null); }); },
         function(d){ if(d) applyDetails(p,d,p.placeId); else skipped++; step(); });
     } else {
       var query=p.name+(p.address?(", "+p.address):"");
       withTimeout(8000,function(cb){ placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:"circle:200@"+p.lat+","+p.lng},function(res,st){
+          if(st!==google.maps.places.PlacesServiceStatus.OK) console.log("[enrich] findPlace",p.name,st);
           cb((st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length)?res[0].place_id:null); }); },
         function(pid){ if(!pid){ skipped++; step(); return; }
           withTimeout(8000,function(cb){ placesService.getDetails({placeId:pid,fields:GET_FIELDS},function(d,st2){
+              if(st2!==google.maps.places.PlacesServiceStatus.OK) console.log("[enrich] getDetails",p.name,st2);
               cb((st2===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry)?d:null); }); },
             function(d){ if(d) applyDetails(p,d,pid); else skipped++; step(); }); });
     } })(); }
