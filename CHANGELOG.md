@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.23] — Fix "Enrich from Google" crash on findPlaceFromQuery
+
+### Fixed
+- Every lookup for a place without a `placeId` threw `Uncaught
+  InvalidValueError: in property locationBias: ...` and was skipped. The
+  Maps JS API's `findPlaceFromQuery` requires `locationBias` as a `Circle`
+  object (`{center:{lat,lng},radius}`), not the web-service
+  `"circle:radius@lat,lng"` string format used by `enrichFromGoogle`.
+
+---
+
 ## [0.9.22] — Enrich from Google: diagnostic logging
 
 ### Added

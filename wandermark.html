@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.22
+  VERSION: 0.9.23
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.23 Fix "Enrich from Google" throwing InvalidValueError on every
+           findPlaceFromQuery call: locationBias must be a Circle object
+           ({center,radius}) in the JS API, not the web-service "circle:r@lat,lng"
+           string format.
     0.9.22 "Enrich from Google" now logs Places API status codes to the
            console for any lookup that doesn't return OK, to help diagnose
            why enrichment isn't finding/updating places.
@@ -465,7 +469,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.22";
+var WANDERMARK_VERSION="0.9.23";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -804,7 +808,7 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
         function(d){ if(d) applyDetails(p,d,p.placeId); else skipped++; step(); });
     } else {
       var query=p.name+(p.address?(", "+p.address):"");
-      withTimeout(8000,function(cb){ placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:"circle:200@"+p.lat+","+p.lng},function(res,st){
+      withTimeout(8000,function(cb){ placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:{center:{lat:p.lat,lng:p.lng},radius:200}},function(res,st){
           if(st!==google.maps.places.PlacesServiceStatus.OK) console.log("[enrich] findPlace",p.name,st);
           cb((st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length)?res[0].place_id:null); }); },
         function(pid){ if(!pid){ skipped++; step(); return; }
