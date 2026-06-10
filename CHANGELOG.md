@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.21] — Enrich from Google: don't hang on blocked requests
+
+### Fixed
+- "✨ Enrich from Google" could hang indefinitely (no toast, no update) if a
+  single Places API request was silently dropped — e.g. by an ad blocker or
+  privacy extension. Each lookup now has an 8s timeout and falls through to
+  the next place if it doesn't respond. Progress toasts now appear every 10
+  places so it's clear it's working.
+
+---
+
 ## [0.9.20] — Enrich from Google
 
 ### Added
