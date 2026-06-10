@@ -10,6 +10,25 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.20] — Enrich from Google
+
+### Added
+- **"✨ Enrich from Google" (⋯ menu, Google Maps mode).** A one-time pass over
+  every place on the map that fills in (without overwriting existing data):
+  - Photo and Google Maps link
+  - A coarse genre badge (e.g. "Italian", "Cocktail bar", "Café")
+  - Star rating and price level ($–$$$$)
+  - Hours, website, and address for places that don't have them yet
+
+  Places that already have a Google place ID are refreshed directly; places
+  imported without one (e.g. from CSV/curated lists) are matched by name +
+  address via a "Find Place" lookup first. Results are saved into the map
+  data, so it's a one-time cost for the map owner, not per-viewer.
+- Genre, star rating, and price level now show in the place list and in the
+  map popup for any place that has them.
+
+---
+
 ## [0.9.19] — Share link fixes + collaborator management
 
 ### Added

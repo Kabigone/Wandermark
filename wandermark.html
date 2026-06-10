@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.19
+  VERSION: 0.9.20
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.20 New "✨ Enrich from Google" action (⋯ menu, Google Maps mode):
+           one-time pass that fills in photo, Google Maps link, genre,
+           star rating, and price level ($–$$$$) for every place — including
+           imported places that don't yet have a Google place ID. Genre,
+           rating, and price now show in the place list and popup.
     0.9.19 Share link fixes + collaborator management. Single share link
            (?map=<id>) instead of two. No duplicate map entries when opening
            the same link twice. Empty default "My map" no longer appears when
@@ -240,6 +245,8 @@
   .place .pmeta .km{color:var(--teal-ink);font-weight:600;font-variant-numeric:tabular-nums}
   .place .pmeta .open{color:var(--open);font-weight:700}
   .place .pmeta .closed{color:var(--closed);font-weight:700}
+  .place .pmeta .rating{color:#b8860b;font-weight:700}
+  .place .pmeta .price{color:var(--muted);font-weight:600}
   .empty{text-align:center;color:var(--muted);font-style:italic;font-family:"Fraunces",serif;padding:26px 10px;font-size:14px}
   .miniadd{width:100%;justify-content:center;border-style:dashed;color:var(--muted)}
 
@@ -252,6 +259,9 @@
   .pop{width:252px}
   .pop-photo img{width:100%;height:118px;object-fit:cover;border-radius:9px;margin-bottom:8px;display:block;background:#e7dcc4}
   .pop h4{font-family:"Fraunces",serif;margin:0 0 2px;font-size:16px;font-weight:700;line-height:1.2}
+  .pop .pmetaline{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .pop .pmetaline .rating{color:#b8860b;font-weight:700}
+  .pop .pmetaline .price{color:var(--muted);font-weight:600}
   .pop .pa{font-size:12px;color:var(--muted);margin-bottom:6px}
   .pop .pcat{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff;margin-bottom:6px}
   .pop .nowtag{font-size:11px;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:20px}
@@ -382,6 +392,7 @@
           <button data-act="impcode"><span class="mi">🔑</span> Import from code</button>
           <div class="sep"></div>
           <button data-act="addcat"><span class="mi">🏷️</span> Manage categories</button>
+          <button data-act="enrich"><span class="mi">✨</span> Enrich from Google</button>
           <div class="sep"></div>
           <div id="verTag" style="font-size:11px;color:var(--muted);padding:6px 11px"></div>
         </div>
@@ -447,7 +458,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.19";
+var WANDERMARK_VERSION="0.9.20";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -513,6 +524,7 @@ function createMapFromData(o){ var id=uid(); LIB.maps[id]={id:id,name:o.name||"I
 function publishNewMap(id){ var m=LIB.maps[id]; if(m&&!m.driveId) driveSaveMap(m,null,{}); }
 function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",
   notes:p.notes||"",hours:p.hours||"",hoursByDay:p.hoursByDay||null,website:p.website||"",photoUrl:p.photoUrl||"",googleUrl:p.googleUrl||"",placeId:p.placeId||"",
+  rating:(typeof p.rating==="number")?p.rating:null,priceLevel:(typeof p.priceLevel==="number")?p.priceLevel:null,genre:p.genre||"",
   tags:normalizeTags(p.tags),createdAt:p.createdAt||Date.now()}; }
 function normalizeTags(t){ if(Array.isArray(t)) return t.map(function(x){return (""+x).trim();}).filter(Boolean);
   if(typeof t==="string"&&t) return t.split(/[;|,]/).map(function(x){return x.trim();}).filter(Boolean); return []; }
@@ -547,6 +559,22 @@ function autoCategoryGoogle(types){ types=types||[]; function has(){ for(var i=0
   if(has("museum","tourist_attraction","art_gallery","park","place_of_worship","zoo","aquarium","amusement_park")) return "see";
   if(has("store","shopping_mall","clothing_store","book_store","supermarket","department_store")) return "shop";
   return "other"; }
+var GENRE_LABELS={italian_restaurant:"Italian",japanese_restaurant:"Japanese",chinese_restaurant:"Chinese",
+  korean_restaurant:"Korean",thai_restaurant:"Thai",vietnamese_restaurant:"Vietnamese",indian_restaurant:"Indian",
+  french_restaurant:"French",mexican_restaurant:"Mexican",spanish_restaurant:"Spanish",greek_restaurant:"Greek",
+  mediterranean_restaurant:"Mediterranean",middle_eastern_restaurant:"Middle Eastern",american_restaurant:"American",
+  steak_house:"Steakhouse",seafood_restaurant:"Seafood",sushi_restaurant:"Sushi",ramen_restaurant:"Ramen",
+  pizza_restaurant:"Pizza",hamburger_restaurant:"Burgers",sandwich_shop:"Sandwiches",breakfast_restaurant:"Breakfast",
+  brunch_restaurant:"Brunch",fast_food_restaurant:"Fast food",vegetarian_restaurant:"Vegetarian",
+  vegan_restaurant:"Vegan",bakery:"Bakery",cafe:"Café",coffee_shop:"Coffee",bar:"Bar",cocktail_bar:"Cocktail bar",
+  wine_bar:"Wine bar",pub:"Pub",night_club:"Nightclub",ice_cream_shop:"Ice cream",dessert_shop:"Desserts",
+  bagel_shop:"Bagels",deli:"Deli",lodging:"Hotel",museum:"Museum",art_gallery:"Art gallery",park:"Park",
+  tourist_attraction:"Attraction"};
+var GENRE_GENERIC=["restaurant","food","point_of_interest","establishment","store"];
+function genreFromTypes(types){ types=types||[]; for(var i=0;i<types.length;i++){ if(GENRE_LABELS[types[i]]) return GENRE_LABELS[types[i]]; }
+  for(var j=0;j<types.length;j++){ if(GENRE_GENERIC.indexOf(types[j])<0) return types[j].split("_").map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(" "); }
+  return ""; }
+function priceLevelStr(p){ if(p.priceLevel==null) return ""; if(p.priceLevel<=0) return "Free"; var s=""; for(var i=0;i<p.priceLevel;i++) s+="$"; return s; }
 function parseWeekdayText(arr){ var o={}; (arr||[]).forEach(function(line){ var low=line.toLowerCase(); for(var k in DAYNAME){ if(low.indexOf(k)===0){ o[DAYNAME[k]]=line.substring(line.indexOf(":")+1).trim(); } } }); return o; }
 
 function todayCode(){ return DOWCODES[new Date().getDay()]; }
@@ -627,6 +655,11 @@ function hoursBlockHtml(p){ if(p.hoursByDay){ var today=todayCode();
       return '<div class="hr-row'+(pair[0]===today?" today":"")+'"><span class="hr-d">'+pair[1]+'</span><span class="hr-t">'+esc(v)+"</span></div>"; }).join("");
     return '<div class="hr-grid">'+rows+"</div>"; }
   if(p.hours) return '<div class="ph">🕑 '+esc(p.hours)+"</div>"; return ""; }
+function metaLineHtml(p){ var bits=[];
+  if(p.genre) bits.push(esc(p.genre));
+  if(p.rating) bits.push('<span class="rating">★ '+p.rating.toFixed(1)+"</span>");
+  var price=priceLevelStr(p); if(price) bits.push('<span class="price">'+price+"</span>");
+  if(!bits.length) return ""; return '<div class="pmetaline">'+bits.join(" · ")+"</div>"; }
 function makePopupNode(p){ var c=catById(p.categoryId);
   var st=statusNow(p),nowtag = st===true?'<span class="nowtag o">Open now</span>':(st===false?'<span class="nowtag c">Closed now</span>':"");
   var node=document.createElement("div"); node.className="pop";
@@ -637,7 +670,7 @@ function makePopupNode(p){ var c=catById(p.categoryId);
   var editable=!ui.readOnly;
   node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
     '<span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+
-    "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
+    "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
     (editable?
       '<select class="ppcat">'+opts+"</select>"+
@@ -694,12 +727,13 @@ var LeafletEngine={
 var googleMap=null, gInfo=null, gMarkers={}, gRef=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false;
 function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
   return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
-var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website"];
+var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website","rating","price_level"];
 function placeFromDetails(d,fallbackName,placeId){ var hours="",hbd=null,photo="";
   if(d.opening_hours&&d.opening_hours.weekday_text){ hours=d.opening_hours.weekday_text.join(" · "); hbd=parseWeekdayText(d.opening_hours.weekday_text); }
   if(d.photos&&d.photos.length){ try{ photo=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); }catch(e){} }
   return {name:d.name||fallbackName,address:d.formatted_address||"",lat:d.geometry.location.lat(),lng:d.geometry.location.lng(),
-    categoryId:autoCategoryGoogle(d.types),hours:hours,hoursByDay:hbd,website:d.website||"",photoUrl:photo,googleUrl:d.url||"",placeId:placeId}; }
+    categoryId:autoCategoryGoogle(d.types),hours:hours,hoursByDay:hbd,website:d.website||"",photoUrl:photo,googleUrl:d.url||"",placeId:placeId,
+    rating:(typeof d.rating==="number")?d.rating:null,priceLevel:(typeof d.price_level==="number")?d.price_level:null,genre:genreFromTypes(d.types)}; }
 var GoogleEngine={
   ready:function(cb){ if(window.google&&window.google.maps&&window.google.maps.places){ cb(); return; }
     window.__wmReady=function(){ cb(); }; window.gm_authFailure=function(){ onGkeyRejected(); };
@@ -739,6 +773,32 @@ function refetchAll(){ if(ui.engine!=="google"||!placesService){ toast("Connect 
     placesService.getDetails({placeId:p.placeId,fields:GET_FIELDS},function(d,st){ if(st===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry){ var np=placeFromDetails(d,p.name,p.placeId);
       p.name=np.name; p.address=np.address; p.hours=np.hours; p.hoursByDay=np.hoursByDay; p.website=np.website||p.website; p.photoUrl=np.photoUrl||p.photoUrl; p.googleUrl=np.googleUrl||p.googleUrl; }
       setTimeout(next,130); }); })(); }
+
+function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Switch to Google Maps mode first (⋯ → Map source)"); return; }
+  var todo=state.places.slice(); if(!todo.length){ toast("No places to enrich"); return; }
+  var i=0,updated=0,skipped=0; toast("Enriching "+todo.length+" place(s)…");
+  function applyDetails(p,d,placeId){ var np=placeFromDetails(d,p.name,placeId);
+    if(!p.address) p.address=np.address;
+    p.hours=np.hours||p.hours; p.hoursByDay=np.hoursByDay||p.hoursByDay;
+    if(!p.website) p.website=np.website;
+    if(!p.photoUrl) p.photoUrl=np.photoUrl;
+    p.googleUrl=np.googleUrl||p.googleUrl; p.placeId=placeId;
+    p.rating=np.rating; p.priceLevel=np.priceLevel; p.genre=np.genre; updated++; }
+  (function next(){ if(i>=todo.length){ markDirty(); renderAll(); toast("Enriched "+updated+" place(s)"+(skipped?(", "+skipped+" not found"):"")); return; }
+    var p=todo[i++];
+    if(p.placeId){ placesService.getDetails({placeId:p.placeId,fields:GET_FIELDS},function(d,st){
+        if(st===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry) applyDetails(p,d,p.placeId); else skipped++;
+        setTimeout(next,150); });
+    } else {
+      var query=p.name+(p.address?(", "+p.address):"");
+      placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:"circle:200@"+p.lat+","+p.lng},function(res,st){
+        if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){ var pid=res[0].place_id;
+          placesService.getDetails({placeId:pid,fields:GET_FIELDS},function(d,st2){
+            if(st2===google.maps.places.PlacesServiceStatus.OK&&d&&d.geometry) applyDetails(p,d,pid); else skipped++;
+            setTimeout(next,150); });
+        } else { skipped++; setTimeout(next,150); }
+      });
+    } })(); }
 
 var Engine=LeafletEngine;
 
@@ -815,6 +875,8 @@ function renderPlaces(){ var list=getFiltered();
   if(!list.length){ el.innerHTML='<div class="empty">Nothing matches your filters.</div>'; return; }
   list.forEach(function(p){ var c=catById(p.categoryId);
     var meta='<span><span class="cdot" style="background:'+c.color+'"></span> '+esc(c.name)+"</span>";
+    if(p.rating) meta+='<span class="rating">★ '+p.rating.toFixed(1)+"</span>";
+    var price=priceLevelStr(p); if(price) meta+='<span class="price">'+price+"</span>";
     if(p._d!=null) meta+='<span class="km">'+p._d.toFixed(p._d<10?1:0)+" km</span>";
     var st=statusNow(p); if(st===true) meta+='<span class="open">● Open</span>'; else if(st===false) meta+='<span class="closed">● Closed</span>';
     var pem = p.photoUrl ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+c.emoji+"</span></div>"
@@ -1356,7 +1418,7 @@ function wireUI(){
   menu.querySelector(".pop-menu").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; var act=b.getAttribute("data-act"); menu.classList.remove("on");
     if(act==="maps") mapsModal(); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
     else if(act==="imp") document.getElementById("fileInput").click(); else if(act==="impcode") importCodeModal();
-    else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); });
+    else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); else if(act==="enrich") enrichFromGoogle(); });
   document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
   document.getElementById("sideToggle").onclick=function(){ document.getElementById("aside").classList.toggle("open"); };
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
