@@ -10,6 +10,30 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.31] — Map ownership on new devices, account info, control overlap
+
+### Fixed
+- **Your own maps no longer show up under "Shared with you" on a device
+  where they were pulled down via Drive sync** (e.g. signing in on
+  mobile after a map was created/published on desktop). New maps added
+  during a sync now check Drive's `owners(me)` field to determine
+  whether you own the file; already-synced maps that were
+  misclassified are corrected on the next sync too.
+- **The "second circle" next to the "My location" button was Google
+  Maps' own zoom/rotate control**, which defaults to the bottom-right
+  corner — directly under our button. It's now anchored bottom-left
+  instead, so the two no longer overlap. (The `filter:drop-shadow`
+  change from 0.9.30 is harmless but wasn't the actual fix.)
+
+### Added
+- **The Drive sign-in box now shows who you're signed in as** (email or
+  name, via Drive's `about` endpoint), with **"Switch account"** and
+  **"Sign out"** buttons — previously it just said "Signed in to
+  Google" with no way to change or clear the session short of clearing
+  site data.
+
+---
+
 ## [0.9.30] — Map name layout + another ghost-circle attempt
 
 ### Changed
