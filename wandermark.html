@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.38
+  VERSION: 0.9.39
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.39 The Categories editor (and "＋ New category" button) are now
+           hidden/locked in view-only mode. Previously you could still
+           add, rename, recolor, merge, or delete categories while
+           viewing a shared map read-only — only place edits were
+           blocked.
     0.9.38 Wandermark no longer offers "local only" maps. If you're not
            signed in to Google with a connected Drive folder (and you
            didn't open a shared map link), a "Welcome to Wandermark"
@@ -465,6 +470,7 @@
   #roBar{background:#fef3e2;border-bottom:1px solid rgba(224,138,47,.35);padding:7px 18px;font-size:13px;display:none;align-items:center;gap:10px;flex-wrap:wrap;z-index:590}
   #roBar.on{display:flex}
   body.read-only .search-wrap{display:none}
+  body.read-only #addCatBtn{display:none}
   .linkRow{display:flex;gap:6px;align-items:center;margin-top:4px}
   .linkRow input{flex:1;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--line-2);background:#fffdf6}
 </style>
@@ -572,7 +578,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.38";
+var WANDERMARK_VERSION="0.9.39";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1389,14 +1395,17 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",folderName:"",key:"
     if(!appSettings.drive.folderId||!appSettings.drive.key){ toast("Paste a folder link and an API key"); return; } closeModal(); syncDrive({}); };
   var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false}; driveToken=""; driveTokenExp=0; clearDriveToken(); save(); closeModal(); updateSigninBadge(); toast("Drive disconnected (synced maps kept)"); }; }
 
-function categoryModal(){ var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
-    return '<div class="catrow" data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span><span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span></div>'; }).join("");
-  openModal('<div class="mh"><div><h2>Categories</h2><p>For the current map. Tap a category to rename, recolor, merge, or delete it.</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><div>'+rows+'</div><div class="divlbl"><span class="ln"></span>Add a category<span class="ln"></span></div>'+
+function categoryModal(){ var editable=!ui.readOnly;
+  var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
+    return '<div class="catrow"'+(editable?' data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"':' style="border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"')+'><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span>'+(editable?'<span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span>':"")+'</div>'; }).join("");
+  openModal('<div class="mh"><div><h2>Categories</h2><p>'+(editable?"For the current map. Tap a category to rename, recolor, merge, or delete it.":"For the current map. (Read-only — sign in to edit.)")+'</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div>'+rows+'</div>'+(editable?
+    '<div class="divlbl"><span class="ln"></span>Add a category<span class="ln"></span></div>'+
     '<div class="field"><label>Name</label><input id="ncName" placeholder="e.g. Hidden gems"></div>'+
     '<div class="field"><label>Icon</label><div class="em-pick" id="ncEmoji"></div></div>'+
-    '<div class="field"><label>Color</label><div class="col-pick" id="ncColor"></div></div><button class="pillbtn" id="ncAdd">＋ Add category</button></div>');
+    '<div class="field"><label>Color</label><div class="col-pick" id="ncColor"></div></div><button class="pillbtn" id="ncAdd">＋ Add category</button>':"")+'</div>');
   modal.querySelector(".close").onclick=closeModal;
+  if(!editable) return;
   var pe=modal.querySelector("#ncEmoji"),chosenE={v:EMOJIS[0]};
   EMOJIS.forEach(function(em,i){ var b=document.createElement("button"); b.textContent=em; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
   var pc=modal.querySelector("#ncColor"),chosenC={v:PALETTE[0]};
@@ -1404,7 +1413,7 @@ function categoryModal(){ var rows=state.categories.map(function(c){ var n=state
   modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); renderAll(); categoryModal(); toast("Category added"); };
   modal.querySelectorAll("[data-edit]").forEach(function(row){ row.onclick=function(){ editCategoryModal(row.getAttribute("data-edit")); }; }); }
 
-function editCategoryModal(id){ var c=catById(id);
+function editCategoryModal(id){ if(ui.readOnly) return; var c=catById(id);
   var others=state.categories.filter(function(x){return x.id!==id;});
   var mergeOpts='<option value="">— pick a category —</option>'+others.map(function(o){return '<option value="'+o.id+'">'+o.emoji+" "+esc(o.name)+"</option>";}).join("");
   openModal('<div class="mh"><div><h2>Edit category</h2><p>Rename, restyle, or fold this category into another.</p></div><button class="close">✕</button></div>'+
