@@ -10,6 +10,24 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.30] — Map name layout + another ghost-circle attempt
+
+### Changed
+- **"Your maps" list:** the map name now always sits on its own line
+  above its action buttons (Rename/Duplicate/Delete/etc.), instead of
+  being squeezed into the remaining horizontal space to their left on
+  narrow screens.
+
+### Fixed
+- Another attempt at the faint duplicate "ghost" circle next to the "My
+  location" button, which 0.9.28's `transform:translateZ(0)` didn't
+  resolve (still present on Android and Windows Chrome). Switched the
+  button's shadow from `box-shadow` to `filter:drop-shadow(...)`, which
+  follows the rendered alpha shape rather than a separate rounded-rect
+  geometry and shouldn't suffer the same subpixel mismatch.
+
+---
+
 ## [0.9.29] — Longer-lived Google Drive sign-in
 
 ### Changed
