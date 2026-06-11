@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.24
+  VERSION: 0.9.25
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.25 Fix "My location" button being cut off below the visible area in
+           mobile Chrome (100vh includes space behind the address/toolbar
+           chrome): use 100dvh for the app shell and inset the button by
+           env(safe-area-inset-bottom).
     0.9.24 New "My location" button (⌖, bottom-right of the map): shows a
            Google-Maps-style blue dot at your current position and pans the
            map there — works in both OSM and Google modes.
@@ -157,7 +161,7 @@
 -->
 <!-- Wandermark — personal travel maps. Single file. OpenStreetMap (keyless) or Google Maps (your API key). -->
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Wandermark</title>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -184,7 +188,7 @@
   ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:8px;border:2px solid var(--paper)}
   ::-webkit-scrollbar-track{background:transparent}
 
-  #app{display:flex;flex-direction:column;height:100vh}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh}
   header{display:flex;align-items:center;gap:12px;padding:11px 18px;background:linear-gradient(180deg,#fbf7ec,#f5eedd);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 6px 16px rgba(60,50,20,.05);z-index:600}
   .brand{display:flex;align-items:baseline;gap:9px;user-select:none}
   .brand .glyph{font-size:22px;transform:translateY(2px)}
@@ -265,7 +269,7 @@
   .miniadd{width:100%;justify-content:center;border-style:dashed;color:var(--muted)}
 
   #map{flex:1;background:#dfe6d8;z-index:1}
-  #locateBtn{position:absolute;right:14px;bottom:24px;z-index:510;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:19px;padding:0;box-shadow:var(--shadow)}
+  #locateBtn{position:absolute;right:14px;bottom:calc(24px + env(safe-area-inset-bottom));z-index:510;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:19px;padding:0;box-shadow:var(--shadow)}
   .mk-me{width:16px;height:16px;border-radius:50%;background:#4285F4;border:3px solid #fff;box-shadow:0 0 0 3px rgba(66,133,244,.35),0 2px 6px rgba(0,0,0,.3)}
   .mk-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--c,#888);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 3px 5px rgba(0,0,0,.35);border:2px solid #fff}
   .mk-pin span{transform:rotate(45deg);font-size:14px;line-height:1}
@@ -475,7 +479,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.24";
+var WANDERMARK_VERSION="0.9.25";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.

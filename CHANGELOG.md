@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.25] — Fix "My location" button cut off on mobile Chrome
+
+### Fixed
+- The ⌖ "My location" button was anchored to `bottom: 24px` of an `#app`
+  shell sized with `100vh`. On mobile Chrome, `100vh` is taller than the
+  visible viewport when the address bar/bottom toolbar are showing, so the
+  button could render below the fold and be inaccessible. The app shell now
+  uses `100dvh` (with a `100vh` fallback), and the button additionally
+  insets by `env(safe-area-inset-bottom)` for devices with a home indicator.
+
+---
+
 ## [0.9.24] — "My location" button
 
 ### Added
