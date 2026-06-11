@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.33] — The actual ghost circle, take two
+
+### Fixed
+- **The "second circle" overlapping "My location" on Google Maps** was
+  Google's unified "camera control" — a circular pan/zoom/rotate widget
+  that Google Maps adds separately from (and in addition to) the legacy
+  zoom/rotate controls, and which defaults to the bottom-right regardless
+  of `zoomControlOptions`/`rotateControlOptions`. Disabled it with
+  `cameraControl:false`.
+
+---
+
 ## [0.9.32] — Mobile header layout, sign-in box, and the real ghost-circle fix
 
 ### Changed
