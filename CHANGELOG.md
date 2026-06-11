@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.35] — Drop the redundant "Update on Drive" button
+
+### Changed
+- **Removed "⤴ Update on Drive"** for maps that are already published to
+  Drive and have no unsaved changes — there was nothing for it to push.
+  "⤴ Publish to Drive" (for new/unpublished maps) and "⤴ Push edits" (for
+  maps with pending changes) are unchanged; edits to published maps still
+  auto-push to Drive ~12s after you make them.
+
+---
+
 ## [0.9.34] — Map type and a proper rename dialog
 
 ### Added

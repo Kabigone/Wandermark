@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.34
+  VERSION: 0.9.35
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.35 Removed the "⤴ Update on Drive" button for maps that are
+           already published and have no pending edits — it had nothing
+           to push, and edits to published maps already auto-push to
+           Drive ~12s after you make them. "Publish to Drive" (new maps)
+           and "Push edits" (dirty maps) are unchanged.
     0.9.34 "Rename map" is now a proper dialog (▾ menu → Rename) that also
            lets you set a map's type: 🧳 Personal or ⭐ Curated. Personal
            maps now show a 🧳 suitcase icon instead of the 🗂️ folder icon,
@@ -528,7 +533,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.34";
+var WANDERMARK_VERSION="0.9.35";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1035,7 +1040,7 @@ scrim.addEventListener("click",function(e){ if(e.target===scrim) closeModal(); }
 function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var driveWritable=!!(dcfg.folderId&&dcfg.clientId);
   LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.mine) mine.push(m); else shared.push(m); });
   function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=!m.mine?"☁️ ":(m.kind==="curated"?"⭐ ":"🧳 ");
-    var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.driveId?(m.dirty?"⤴ Push edits":"⤴ Update on Drive"):"⤴ Publish to Drive")+'</button>':"";
+    var pub=(driveWritable&&(!m.driveId||m.dirty))?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.driveId?"⤴ Push edits":"⤴ Publish to Drive")+'</button>':"";
     var acts; if(!m.mine){ acts=pub+'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
     else { var shareBtn=m.driveId?'<button class="mact" data-share="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">👥 Share</button>':'';
       acts='<button class="mact" data-ren="'+m.id+'">Rename</button><button class="mact" data-dup="'+m.id+'">Duplicate</button>'+pub+shareBtn+'<button class="mact" data-del="'+m.id+'">Delete</button>'; }
