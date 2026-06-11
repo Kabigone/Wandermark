@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.23
+  VERSION: 0.9.24
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.24 New "My location" button (⌖, bottom-right of the map): shows a
+           Google-Maps-style blue dot at your current position and pans the
+           map there — works in both OSM and Google modes.
     0.9.23 Fix "Enrich from Google" throwing InvalidValueError on every
            findPlaceFromQuery call: locationBias must be a Circle object
            ({center,radius}) in the JS API, not the web-service "circle:r@lat,lng"
@@ -262,6 +265,8 @@
   .miniadd{width:100%;justify-content:center;border-style:dashed;color:var(--muted)}
 
   #map{flex:1;background:#dfe6d8;z-index:1}
+  #locateBtn{position:absolute;right:14px;bottom:24px;z-index:510;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:19px;padding:0;box-shadow:var(--shadow)}
+  .mk-me{width:16px;height:16px;border-radius:50%;background:#4285F4;border:3px solid #fff;box-shadow:0 0 0 3px rgba(66,133,244,.35),0 2px 6px rgba(0,0,0,.3)}
   .mk-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--c,#888);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 3px 5px rgba(0,0,0,.35);border:2px solid #fff}
   .mk-pin span{transform:rotate(45deg);font-size:14px;line-height:1}
   .mk-ref{width:18px;height:18px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 3px rgba(44,114,108,.4),0 2px 5px rgba(0,0,0,.3)}
@@ -452,6 +457,7 @@
     </aside>
 
     <div id="map"></div>
+    <button class="btn" id="locateBtn" title="My location">⌖</button>
 
     <div id="tableView">
       <div class="tv-bar"><span class="tt">▦ Spreadsheet view</span><span class="stat" id="tvCount"></span>
@@ -469,7 +475,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.23";
+var WANDERMARK_VERSION="0.9.24";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -504,7 +510,7 @@ var STORE_KEY="wandermark:data", GKEY_KEY="wandermark:gkey";
 var appSettings={lang:"native",drive:{folderId:"",folderName:"",key:"",clientId:"",auto:false}};
 var LIB={activeId:null,order:[],maps:{}};
 var state={name:"My map",kind:"personal",places:[],categories:freshCats()}; // points at the active map
-var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null,linkMode:null,readOnly:false};
+var ui={activeCats:{},activeTags:{},activeSmart:{},tagMode:"all",view:"map",engine:"osm",mapReady:false,geoAnchor:null,customAnchor:null,linkMode:null,readOnly:false,myLocation:null};
 var gkey="", gkeyBlocked=false;
 var markers={};
 
@@ -701,7 +707,7 @@ function makePopupNode(p){ var c=catById(p.categoryId);
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
 /* ===================== Leaflet engine ===================== */
-var leafletMap=null, leafletLayer=null, leafletRef=null;
+var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null;
 var LeafletEngine={
   ready:function(cb){ if(window.L) cb(); else setTimeout(function(){LeafletEngine.ready(cb);},150); },
   init:function(el){ leafletMap=L.map(el,{zoomControl:true}).setView([DEF.lat,DEF.lng],DEF.z);
@@ -718,6 +724,9 @@ var LeafletEngine={
     var a=getAnchor(); if(a) leafletRef=L.marker([a.lat,a.lng],{icon:L.divIcon({className:"",html:'<div class="mk-ref"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:-100}).addTo(leafletMap); },
   open:function(p){ leafletMap.flyTo([p.lat,p.lng],16,{duration:.6}); var mk=markers[p.id]; if(mk) setTimeout(function(){mk.openPopup();},650); },
   fit:function(places){ if(!places.length) return; leafletMap.fitBounds(L.latLngBounds(places.map(function(p){return [p.lat,p.lng];})).pad(.18),{maxZoom:15}); },
+  showMe:function(loc){ if(leafletMe){ leafletMap.removeLayer(leafletMe); leafletMe=null; }
+    leafletMe=L.marker([loc.lat,loc.lng],{icon:L.divIcon({className:"",html:'<div class="mk-me"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:1000,interactive:false}).addTo(leafletMap); },
+  panTo:function(loc){ if(leafletMap) leafletMap.panTo([loc.lat,loc.lng]); },
   resize:function(){ if(leafletMap) leafletMap.invalidateSize(); },
   geocode:function(addr,cb){ var lang=appSettings.lang&&appSettings.lang!=="native"?("&accept-language="+appSettings.lang):"";
     fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1"+lang+"&q="+encodeURIComponent(addr),{headers:{Accept:"application/json"}})
@@ -735,7 +744,7 @@ var LeafletEngine={
 };
 
 /* ===================== Google engine ===================== */
-var googleMap=null, gInfo=null, gMarkers={}, gRef=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false;
+var googleMap=null, gInfo=null, gMarkers={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false;
 function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
   return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
 var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website","rating","price_level"];
@@ -767,6 +776,10 @@ var GoogleEngine={
     var a=getAnchor(); if(a) gRef=new google.maps.Marker({position:{lat:a.lat,lng:a.lng},map:googleMap,zIndex:-100,icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2c726c",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
   open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); } },
   fit:function(places){ if(!places.length) return; var b=new google.maps.LatLngBounds(); places.forEach(function(p){ b.extend({lat:p.lat,lng:p.lng}); }); googleMap.fitBounds(b,60); if(places.length===1) googleMap.setZoom(15); },
+  showMe:function(loc){ if(gMe){ gMe.setMap(null); gMe=null; }
+    gMe=new google.maps.Marker({position:{lat:loc.lat,lng:loc.lng},map:googleMap,zIndex:1000,clickable:false,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:7,fillColor:"#4285F4",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
+  panTo:function(loc){ if(googleMap) googleMap.panTo({lat:loc.lat,lng:loc.lng}); },
   resize:function(){},
   geocode:function(addr,cb){ if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
   suggest:function(q,cb){ if(!acService){ cb([]); return; } var req={input:q}; try{ var b=googleMap.getBounds(); if(b) req.bounds=b; }catch(e){}
@@ -822,12 +835,18 @@ var Engine=LeafletEngine;
 
 /* ===================== engine switching ===================== */
 function teardownMap(){ ui.mapReady=false;
-  try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; } }catch(e){}
-  googleMap=null; gInfo=null; gRef=null; markers={}; gMarkers={};
+  try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; leafletMe=null; } }catch(e){}
+  googleMap=null; gInfo=null; gRef=null; gMe=null; markers={}; gMarkers={};
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
 function startEngine(kind){ teardownMap();
   if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }
-  Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); }); }
+  Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); if(ui.myLocation) Engine.showMe(ui.myLocation); }); }
+function locateMe(){ if(!navigator.geolocation){ toast("Location isn’t available in this browser"); return; }
+  toast("Finding your location…");
+  navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+      ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panTo(loc); } },
+    function(){ toast("Couldn’t get your location"); },
+    {enableHighAccuracy:true,maximumAge:30000,timeout:10000}); }
 function onGkeyRejected(){ gkeyBlocked=true; var ownKey=(gkey&&gkey!==CONFIG.apiKey);
   toast(ownKey?"Google rejected that key — switching to OpenStreetMap. Open 🗂️ Map ▾ → Map style to try a different one.":"Google rejected the shared Maps connection — switching to OpenStreetMap.");
   if(ownKey){ gkey=""; Store.set(GKEY_KEY,""); }
@@ -1439,6 +1458,7 @@ function wireUI(){
     else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); else if(act==="enrich") enrichFromGoogle(); });
   document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
   document.getElementById("sideToggle").onclick=function(){ document.getElementById("aside").classList.toggle("open"); };
+  document.getElementById("locateBtn").onclick=locateMe;
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
   document.getElementById("dayFilter").value=todayCode();
 }

@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.24] — "My location" button
+
+### Added
+- New ⌖ "My location" button at the bottom-right of the map. Tapping it
+  asks for your browser/device location, drops a Google-Maps-style blue
+  dot at your position, and pans the map there — so you can see where
+  places are relative to you on mobile. Works in both OpenStreetMap and
+  Google Maps modes, and the dot persists across map refreshes and engine
+  switches.
+
+---
+
 ## [0.9.23] — Fix "Enrich from Google" crash on findPlaceFromQuery
 
 ### Fixed
