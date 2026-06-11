@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.26
+  VERSION: 0.9.27
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.27 Replace the "My location" button's ⌖ glyph with an inline SVG
+           crosshair icon — the Unicode glyph rendered with extra/offset
+           strokes on some Android fonts, looking like a broken shadow.
     0.9.26 "Your maps" list: map names that don't fit now wrap onto a second
            line instead of being truncated with an ellipsis.
     0.9.25 Fix "My location" button being cut off below the visible area in
@@ -463,7 +466,7 @@
     </aside>
 
     <div id="map"></div>
-    <button class="btn" id="locateBtn" title="My location">⌖</button>
+    <button class="btn" id="locateBtn" title="My location"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="7"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg></button>
 
     <div id="tableView">
       <div class="tv-bar"><span class="tt">▦ Spreadsheet view</span><span class="stat" id="tvCount"></span>
@@ -481,7 +484,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.26";
+var WANDERMARK_VERSION="0.9.27";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
