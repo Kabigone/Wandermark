@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.36] — Maps always have a place to live
+
+### Added
+- **"Connect a Drive folder" dialog**: if you create a new map (or
+  duplicate/import one) and no Drive folder is connected yet, Wandermark
+  now asks you to pick one immediately, then pushes the new map (and any
+  other unpublished maps you own) there right away — instead of silently
+  leaving it as a browser-only map with just a toast you could miss.
+- **"Heads up" nudge for orphaned edits**: if a map somehow has unsaved
+  changes but still isn't connected to Drive, you'll get a toast (at most
+  once every 10 minutes) pointing you at 🗂️ Map ▾ to connect a folder.
+
+### Philosophy
+- Wandermark maps are meant to be available anywhere and shareable — a
+  map that only exists in one browser's local storage is treated as a gap
+  to close, not a normal state. View-only "Shared with you" maps are
+  unaffected; they already read from someone else's Drive file.
+
+---
+
 ## [0.9.35] — Drop the redundant "Update on Drive" button
 
 ### Changed
