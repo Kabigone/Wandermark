@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.28
+  VERSION: 0.9.29
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.29 Google Drive sign-in now persists across browser/tab restarts
+           (was sessionStorage, now localStorage, still subject to the
+           ~1hr token expiry), and on boot Wandermark tries a silent
+           (no-popup) re-auth if the cached token has expired, only
+           showing "Sign in to Google" if that fails.
     0.9.28 Attempt to fix a faint duplicate "ghost" circle rendered next to
            the "My location" button on Chrome/Windows (likely a subpixel
            box-shadow + border-radius compositing artifact at non-100%
@@ -489,7 +494,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.28";
+var WANDERMARK_VERSION="0.9.29";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1085,10 +1090,10 @@ function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
 var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
 var DRIVE_TOKEN_KEY="wandermark:driveToken";
-function saveDriveToken(){ try{ if(window.sessionStorage) sessionStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
-function loadDriveToken(){ try{ var raw=window.sessionStorage&&sessionStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
+function saveDriveToken(){ try{ if(window.localStorage) localStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
+function loadDriveToken(){ try{ var raw=window.localStorage&&localStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
   var d=JSON.parse(raw); if(d&&d.t&&d.e>Date.now()){ driveToken=d.t; driveTokenExp=d.e; } }catch(e){} }
-function clearDriveToken(){ try{ if(window.sessionStorage) sessionStorage.removeItem(DRIVE_TOKEN_KEY); }catch(e){} }
+function clearDriveToken(){ try{ if(window.localStorage) localStorage.removeItem(DRIVE_TOKEN_KEY); }catch(e){} }
 function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
   var s=document.createElement("script"); s.src="https://accounts.google.com/gsi/client"; s.async=true; s.defer=true;
   s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load Google sign-in (only works on the hosted https site, not a local file)."); }; document.head.appendChild(s); }
@@ -1495,6 +1500,7 @@ function boot(){ wireUI(); loadDriveToken();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
+      if(appSettings.drive.clientId&&!(driveToken&&Date.now()<driveTokenExp)) trySilentDriveToken(function(){ updateSigninBadge(); });
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling();
       var lp=parseLinkParam(); if(lp) loadLinkMap(lp.id,lp.mode); }); }); }

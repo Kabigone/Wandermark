@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.29] — Longer-lived Google Drive sign-in
+
+### Changed
+- The cached Google Drive access token now lives in `localStorage`
+  instead of `sessionStorage`, so signing in once carries over across
+  browser/tab restarts (not just page refreshes within the same tab).
+  It's still a real OAuth access token, so it still expires after about
+  an hour either way.
+- On boot, if there's no valid cached token but Drive is configured,
+  Wandermark now tries a silent (no-popup) re-auth via Google Identity
+  Services first. If that succeeds you're signed back in with no action;
+  if it fails (e.g. no active Google session, or third-party cookies
+  blocked), the "🔑 Sign in to Google" badge appears as before.
+
+---
+
 ## [0.9.28] — Attempt fix for ghost circle next to "My location" button
 
 ### Fixed
