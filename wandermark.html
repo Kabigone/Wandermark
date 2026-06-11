@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.27
+  VERSION: 0.9.28
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.28 Attempt to fix a faint duplicate "ghost" circle rendered next to
+           the "My location" button on Chrome/Windows (likely a subpixel
+           box-shadow + border-radius compositing artifact at non-100%
+           display scaling): force the button onto its own GPU layer with
+           transform:translateZ(0).
     0.9.27 Replace the "My location" button's ⌖ glyph with an inline SVG
            crosshair icon — the Unicode glyph rendered with extra/offset
            strokes on some Android fonts, looking like a broken shadow.
@@ -274,7 +279,7 @@
   .miniadd{width:100%;justify-content:center;border-style:dashed;color:var(--muted)}
 
   #map{flex:1;background:#dfe6d8;z-index:1}
-  #locateBtn{position:absolute;right:14px;bottom:calc(24px + env(safe-area-inset-bottom));z-index:510;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:19px;padding:0;box-shadow:var(--shadow)}
+  #locateBtn{position:absolute;right:14px;bottom:calc(24px + env(safe-area-inset-bottom));z-index:510;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:19px;padding:0;box-shadow:var(--shadow);transform:translateZ(0)}
   .mk-me{width:16px;height:16px;border-radius:50%;background:#4285F4;border:3px solid #fff;box-shadow:0 0 0 3px rgba(66,133,244,.35),0 2px 6px rgba(0,0,0,.3)}
   .mk-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--c,#888);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 3px 5px rgba(0,0,0,.35);border:2px solid #fff}
   .mk-pin span{transform:rotate(45deg);font-size:14px;line-height:1}
@@ -484,7 +489,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.27";
+var WANDERMARK_VERSION="0.9.28";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
