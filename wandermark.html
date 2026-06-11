@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.35
+  VERSION: 0.9.36
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.36 Maps are no longer allowed to silently stay "local only": if
+           you create a new map (or duplicate/import one) and no Drive
+           folder is connected yet, a dialog now asks you to connect one
+           right away (and pushes the new map there immediately). If a
+           map somehow ends up with edits but no Drive folder, you'll get
+           a one-time-per-10-minutes nudge instead of nothing.
     0.9.35 Removed the "⤴ Update on Drive" button for maps that are
            already published and have no pending edits — it had nothing
            to push, and edits to published maps already auto-push to
@@ -533,7 +539,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.35";
+var WANDERMARK_VERSION="0.9.36";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -595,7 +601,7 @@ function createMapFromData(o){ var id=uid(); LIB.maps[id]={id:id,name:o.name||"I
    old "it just sits in this browser until I remember to Publish" gap by
    pushing it to your connected Drive folder right away. driveSaveMap already
    handles every state gracefully: publishes if ready, prompts sign-in if
-   needed, or nudges you to connect a folder if there isn't one yet. */
+   needed, or asks you to connect a Drive folder if there isn't one yet. */
 function publishNewMap(id){ var m=LIB.maps[id]; if(m&&!m.driveId) driveSaveMap(m,null,{}); }
 function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",
   notes:p.notes||"",hours:p.hours||"",hoursByDay:p.hoursByDay||null,website:p.website||"",photoUrl:p.photoUrl||"",googleUrl:p.googleUrl||"",placeId:p.placeId||"",
@@ -1228,16 +1234,32 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
   toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }
-function scheduleAutoPush(map){ if(!map||!map.driveId) return; var id=map.id;
+function nudgeNoFolder(map){ var now=Date.now();
+  if(map._lastNoFolderNudge&&now-map._lastNoFolderNudge<600000) return; map._lastNoFolderNudge=now;
+  toast("Heads up — “"+map.name+"” isn’t saved anywhere yet, so it only exists in this browser. Open 🗂️ Map ▾ to connect a Drive folder."); }
+function scheduleAutoPush(map){ if(!map) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
   autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; if(!map.dirty) return;
-    var d=appSettings.drive||{}; if(!d.folderId||!d.clientId) return;
+    var d=appSettings.drive||{}; if(!d.clientId) return;
+    if(!d.folderId){ nudgeNoFolder(map); return; }
     if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
     trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else nudgeSignIn(map); });
   },12000); }
 
+/* Every map needs somewhere to live — if there's no Drive folder connected
+   yet, ask for one right here instead of leaving the map stuck unsaved in
+   this browser. connectToFolder() pushes any unpublished "mine" maps
+   (including this one) as soon as a folder is picked. */
+function connectFolderModal(map,cb){
+  openModal('<div class="mh"><div><h2>Connect a Drive folder</h2><p>Maps need a shared Google Drive folder to live in, so “'+esc(map.name)+'” is saved, available on any device, and shareable with friends.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px"><button class="pillbtn" id="cfPick" style="background:var(--teal)">📁 Choose Drive folder</button></div>'+
+    '<p class="hint">Pick a folder in your Drive — your own, or one a friend already shared with you. This map (and any others not yet saved) will be pushed there right away.</p>'+
+    '<p class="hint" style="text-align:right"><a href="#" id="cfAdvanced" style="color:var(--muted);font-size:11.5px">⚙ Advanced: paste a folder link instead</a></p></div>');
+  modal.querySelector(".close").onclick=closeModal;
+  modal.querySelector("#cfPick").onclick=function(){ pickDriveFolder(function(id,name){ closeModal(); connectToFolder(id,name); if(cb) cb(); }); };
+  modal.querySelector("#cfAdvanced").onclick=function(e){ e.preventDefault(); driveModal(); }; }
 function driveSaveMap(map,cb,opts){ opts=opts||{}; var fid=appSettings.drive&&appSettings.drive.folderId;
-  if(!fid){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }
+  if(!fid){ if(opts.silent) nudgeNoFolder(map); else connectFolderModal(map,cb); return; }
   function fail(prefix,err){ var msg=prefix+driveErrText(err);
     if(opts.silent){ var now=Date.now(); if(!map._lastSaveErrToast||now-map._lastSaveErrToast>120000){ map._lastSaveErrToast=now; toast(msg); } }
     else toast(msg); }
