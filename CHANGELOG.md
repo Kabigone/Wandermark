@@ -10,6 +10,29 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.32] — Mobile header layout, sign-in box, and the real ghost-circle fix
+
+### Changed
+- **Map name button** (top of page) no longer truncates with `…` on
+  mobile — it now shares a row with the ⋯ menu and wraps onto a second
+  line for long names.
+- **"Switch account" / "Sign out"** buttons in the Drive sign-in box now
+  sit together on their own row below the "Signed in as…" text, instead
+  of one wrapping awkwardly below the other on narrow screens.
+- **Removed the 🗺️ Map / ▦ Table tab toggle from the header.** Map is
+  now the only view shown by default; switch to the spreadsheet via
+  ⋯ → "Spreadsheet view" (still has its own "✕ Back to map" button).
+
+### Fixed
+- **The actual "second circle" overlapping "My location"** turned out to
+  be Leaflet's attribution control — on narrow screens it collapses to a
+  small circular "i" toggle, anchored bottom-right by default, right on
+  top of our button. Moved Leaflet's attribution control to the
+  bottom-left (Google Maps' zoom/rotate controls were already moved
+  there in 0.9.31).
+
+---
+
 ## [0.9.31] — Map ownership on new devices, account info, control overlap
 
 ### Fixed
