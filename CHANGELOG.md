@@ -10,6 +10,14 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.39] — Lock down category editing in view-only mode
+
+### Fixed
+- **Categories could still be added/renamed/recolored/merged/deleted while
+  viewing a shared map read-only.** The "＋ New category" button is now
+  hidden, and the Categories dialog opens in a view-only list (no add
+  form, no "Edit ›" links) when `ui.readOnly` is set.
+
 ## [0.9.38] — Maps always need a place to live
 
 ### Changed
