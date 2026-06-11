@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.40] — Tapping a Google Maps POI offers to add it, not a blank pin
+
+### Changed
+- **Clicking a labeled point of interest on Google Maps** (a restaurant,
+  shop, landmark, etc.) now looks up that place's details — name,
+  address, hours, rating, and a guessed category — and shows an "＋ Add
+  to map" dialog for it, the same data you'd get by searching for it.
+  Previously every map click, including taps on POIs, dropped a generic
+  "Drop a pin" with no name or details.
+- Clicking empty map area (no POI under the tap) still opens the plain
+  "Drop a pin" dialog as before.
+
 ## [0.9.39] — Lock down category editing in view-only mode
 
 ### Fixed
