@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.38] — Maps always need a place to live
+
+### Changed
+- **"Local only" maps are no longer a thing.** A map should always have a
+  place it's saved to (your Drive folder) or, for view-only links, a place
+  it's read from. If you arrive without a `?map=` link and you're not
+  signed in to Google with a Drive folder connected, a full-screen "Welcome
+  to Wandermark" gate now asks you to sign in and pick/create a folder
+  before you can create or edit any map.
+- Opening a shared map link (`?map=...`) is unaffected — it still opens
+  view-only without requiring sign-in.
+- Any maps that were already saved locally before this change get
+  automatically pushed to your Drive folder the moment one is connected
+  (`publishAllUnpublished`), so nothing is lost.
+
 ## [0.9.37] — Don't attempt silent re-auth on devices that never signed in
 
 ### Fixed

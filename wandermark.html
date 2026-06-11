@@ -3,10 +3,19 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.37
+  VERSION: 0.9.38
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.38 Wandermark no longer offers "local only" maps. If you're not
+           signed in to Google with a connected Drive folder (and you
+           didn't open a shared map link), a "Welcome to Wandermark"
+           screen now asks you to sign in and pick/create a Drive folder
+           before you can create or edit anything — a map always needs a
+           place to be saved. Opening a map link (?map=...) still works
+           view-only without signing in. Any maps already saved locally
+           from before this change are automatically pushed to Drive the
+           moment a folder is connected.
     0.9.37 On boot, Wandermark no longer attempts a silent Google
            re-auth on devices that have never signed in to Drive. On
            mobile, that attempt could make a window briefly flash open
@@ -392,6 +401,10 @@
   .tnum{font-variant-numeric:tabular-nums;color:var(--muted)}
   .topen{color:var(--open);font-weight:700} .tclosed{color:var(--closed);font-weight:700}
 
+  #authGate{position:fixed;inset:0;background:rgba(35,30,12,.55);backdrop-filter:blur(3px);z-index:1100;display:none;align-items:center;justify-content:center;padding:20px}
+  #authGate.on{display:flex}
+  #authGate .modal{max-width:420px}
+
   .scrim{position:fixed;inset:0;background:rgba(35,30,12,.45);backdrop-filter:blur(2px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
   .scrim.on{display:flex}
   .modal{background:var(--card);border-radius:18px;box-shadow:var(--shadow);max-width:560px;width:100%;max-height:88vh;overflow:auto;border:1px solid var(--line-2)}
@@ -537,6 +550,20 @@
   </main>
 </div>
 
+<div id="authGate"><div class="modal">
+  <div class="mh" style="flex-direction:column;align-items:center;text-align:center;padding-top:26px">
+    <span style="font-size:40px;line-height:1">🧭</span>
+    <h2 style="margin-top:8px">Welcome to Wandermark</h2>
+    <p>Maps live in a Google Drive folder you choose, so they're saved, available on
+       any device, and easy to share with friends.</p>
+  </div>
+  <div class="mb" style="text-align:center">
+    <button class="pillbtn" id="gateConnect" style="background:var(--teal);width:100%">🔑 Sign in with Google</button>
+    <p class="hint" style="margin-top:14px">After signing in, you'll pick (or create) a Drive
+       folder — your maps are saved there automatically. Got a link to someone else's map?
+       Open it directly and you can view it without signing in.</p>
+  </div>
+</div></div>
 <div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput" accept=".json,.csv,.kml,.kmz" style="display:none">
@@ -545,7 +572,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.37";
+var WANDERMARK_VERSION="0.9.38";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1203,10 +1230,22 @@ function fetchFolderOwnerName(id,cb){ if(!driveToken||Date.now()>=driveTokenExp)
     .then(function(r){ return r.json(); }).then(function(d){ var o=d&&d.owners&&d.owners[0];
       cb((o&&!o.me&&o.displayName)?o.displayName:null); })
     .catch(function(){ cb(null); }); }
+/* Push every map you own that hasn't reached Drive yet — called whenever a
+   folder becomes connected (fresh connect, or on boot once already
+   reconnected) so old local-only maps don't get left behind. */
+function publishAllUnpublished(){ if(!(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp)) return;
+  LIB.order.forEach(function(mid){ var m=LIB.maps[mid]; if(m&&m.mine&&!m.driveId) driveSaveMap(m,null,{silent:true}); }); }
 function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
   fetchFolderOwnerName(id,function(owner){ toast("Connected to “"+(name||"folder")+"”"+(owner?" — shared by "+owner:"")+" — syncing…"); });
-  LIB.order.forEach(function(mid){ var m=LIB.maps[mid]; if(m&&m.mine&&!m.driveId) driveSaveMap(m,null,{silent:true}); });
+  publishAllUnpublished();
   syncDrive({then:function(){ mapsModal(); }}); }
+/* ----- the "sign in + connect a folder before you can do anything" gate ----- */
+function showAuthGate(){ document.getElementById("authGate").classList.add("on"); }
+function hideAuthGate(){ document.getElementById("authGate").classList.remove("on"); }
+function authGateConnect(){
+  ensureDriveToken(function(){
+    if(appSettings.drive.folderId){ hideAuthGate(); publishAllUnpublished(); renderAll(); return; }
+    pickDriveFolder(function(id,name){ connectToFolder(id,name); hideAuthGate(); }); }); }
 /* Right after sign-in, look for a folder that's obviously "the" Wandermark folder
    (named e.g. "Wandermark" or "Wandermark maps", owned or shared with this account)
    and connect to it straight away — no picker needed unless we can't tell which one. */
@@ -1542,6 +1581,7 @@ function closeSidebarMobile(){ document.getElementById("aside").classList.remove
 /* ===================== init ===================== */
 function wireUI(){
   var vt=document.getElementById("verTag"); if(vt) vt.textContent="Wandermark v"+WANDERMARK_VERSION;
+  document.getElementById("gateConnect").onclick=authGateConnect;
   document.getElementById("search").addEventListener("input",function(e){ doSearch(e.target.value.trim()); });
   document.getElementById("search").addEventListener("focus",function(e){ if(e.target.value.trim().length>=3) doSearch(e.target.value.trim()); });
   document.addEventListener("click",function(e){ if(!e.target.closest(".search-wrap")) hideResults(); });
@@ -1597,10 +1637,14 @@ function boot(){ wireUI(); loadDriveToken();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
-      if(appSettings.drive.clientId&&driveEverSignedIn&&!(driveToken&&Date.now()<driveTokenExp)) trySilentDriveToken(function(){ updateSigninBadge(); });
+      var lp=parseLinkParam();
+      if(lp){ loadLinkMap(lp.id,lp.mode); }
+      else if(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp){ publishAllUnpublished(); }
+      else if(appSettings.drive.clientId&&driveEverSignedIn){ trySilentDriveToken(function(ok){ updateSigninBadge();
+          if(appSettings.drive.folderId&&ok) publishAllUnpublished(); else showAuthGate(); }); }
+      else if(appSettings.drive.clientId) showAuthGate();
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
-      startDrivePolling();
-      var lp=parseLinkParam(); if(lp) loadLinkMap(lp.id,lp.mode); }); }); }
+      startDrivePolling(); }); }); }
 
 function parseLinkParam(){
   var s=location.search;
