@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.33
+  VERSION: 0.9.34
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.34 "Rename map" is now a proper dialog (▾ menu → Rename) that also
+           lets you set a map's type: 🧳 Personal or ⭐ Curated. Personal
+           maps now show a 🧳 suitcase icon instead of the 🗂️ folder icon,
+           which read as a filesystem/Drive thing rather than "yours".
     0.9.33 The actual ghost circle (for real this time): on Google Maps,
            the unified "camera control" (a circular pan/zoom/rotate widget
            Google added separately from the legacy zoom/rotate controls)
@@ -524,7 +528,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.33";
+var WANDERMARK_VERSION="0.9.34";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -594,7 +598,7 @@ function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.add
   tags:normalizeTags(p.tags),createdAt:p.createdAt||Date.now()}; }
 function normalizeTags(t){ if(Array.isArray(t)) return t.map(function(x){return (""+x).trim();}).filter(Boolean);
   if(typeof t==="string"&&t) return t.split(/[;|,]/).map(function(x){return x.trim();}).filter(Boolean); return []; }
-function renderMapBtn(){ var b=document.getElementById("mapBtn"); var ic=!state.mine?"☁️":(state.kind==="curated"?"⭐":"🗂️"); b.innerHTML=ic+" "+esc(state.name)+" ▾"; }
+function renderMapBtn(){ var b=document.getElementById("mapBtn"); var ic=!state.mine?"☁️":(state.kind==="curated"?"⭐":"🧳"); b.innerHTML=ic+" "+esc(state.name)+" ▾"; }
 
 /* ===================== helpers ===================== */
 function catById(id){ for(var i=0;i<state.categories.length;i++) if(state.categories[i].id===id) return state.categories[i]; return state.categories[state.categories.length-1]; }
@@ -1030,7 +1034,7 @@ scrim.addEventListener("click",function(e){ if(e.target===scrim) closeModal(); }
 
 function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var driveWritable=!!(dcfg.folderId&&dcfg.clientId);
   LIB.order.forEach(function(id){ var m=LIB.maps[id]; if(!m) return; if(m.mine) mine.push(m); else shared.push(m); });
-  function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=!m.mine?"☁️ ":(m.kind==="curated"?"⭐ ":"");
+  function rows(arr){ return arr.map(function(m){ var active=m.id===LIB.activeId; var ic=!m.mine?"☁️ ":(m.kind==="curated"?"⭐ ":"🧳 ");
     var pub=driveWritable?'<button class="mact" data-pub="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">'+(m.driveId?(m.dirty?"⤴ Push edits":"⤴ Update on Drive"):"⤴ Publish to Drive")+'</button>':"";
     var acts; if(!m.mine){ acts=pub+'<button class="mact" data-dup="'+m.id+'">Copy to my maps</button>'; }
     else { var shareBtn=m.driveId?'<button class="mact" data-share="'+m.id+'" style="color:var(--teal-ink);border-color:var(--teal)">👥 Share</button>':'';
@@ -1082,7 +1086,7 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
   var mcf=modal.querySelector("#mChangeFolder"); if(mcf) mcf.onclick=function(e){ e.preventDefault(); pickDriveFolder(connectToFolder); };
   if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
   modal.querySelectorAll("[data-go]").forEach(function(el){ el.onclick=function(){ switchMap(el.getAttribute("data-go")); }; });
-  modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-ren")]; var nm=prompt("Rename map:",m.name); if(nm!=null){ m.name=nm.trim()||m.name; if(m.driveId){ m.dirty=true; scheduleAutoPush(m); } save(); renderMapBtn(); mapsModal(); } }; });
+  modal.querySelectorAll("[data-ren]").forEach(function(el){ el.onclick=function(){ renameMapModal(el.getAttribute("data-ren")); }; });
   modal.querySelectorAll("[data-dup]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-dup")];
     createMapFromData({name:m.name+(m.mine?" copy":""),kind:m.kind,places:JSON.parse(JSON.stringify(m.places)),categories:JSON.parse(JSON.stringify(m.categories))}); toast(m.mine?"Duplicated":"Copied to your maps (editable)"); mapsModal(); }; });
   modal.querySelectorAll("[data-del]").forEach(function(el){ el.onclick=function(){ var id=el.getAttribute("data-del"); if(LIB.order.length<=1){ toast("Keep at least one map"); return; }
@@ -1353,6 +1357,18 @@ function editCategoryModal(id){ var c=catById(id);
     var fb=state.categories[state.categories.length-1].id===id?state.categories[0].id:state.categories[state.categories.length-1].id;
     var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=fb; });
     state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast(moved?("Moved "+moved+" place(s) to "+catById(fb).name):"Category removed"); }; }
+
+function renameMapModal(id){ var m=LIB.maps[id];
+  openModal('<div class="mh"><div><h2>Edit map</h2><p>Rename this map or change its type.</p></div><button class="close">✕</button></div>'+
+    '<div class="mb"><div class="field"><label>Name</label><input id="rmName" value="'+esc(m.name)+'"></div>'+
+    '<div class="field"><label>Map type</label><select id="rmKind">'+
+    '<option value="personal"'+(m.kind!=="curated"?" selected":"")+'>🧳 Personal — your own map</option>'+
+    '<option value="curated"'+(m.kind==="curated"?" selected":"")+'>⭐ Curated — a guide or recommendation list</option>'+
+    '</select></div>'+
+    '<button class="pillbtn" id="rmSave" style="background:var(--teal)">Save changes</button></div>');
+  modal.querySelector(".close").onclick=function(){ mapsModal(); };
+  modal.querySelector("#rmSave").onclick=function(){ var nm=modal.querySelector("#rmName").value.trim(); if(nm) m.name=nm; m.kind=modal.querySelector("#rmKind").value;
+    if(m.driveId){ m.dirty=true; scheduleAutoPush(m); } save(); renderMapBtn(); mapsModal(); toast("Map updated"); }; }
 
 function languageModal(){ var opts=LANGS.map(function(l){return '<option value="'+l[0]+'"'+(appSettings.lang===l[0]?" selected":"")+">"+l[1]+"</option>";}).join("");
   openModal('<div class="mh"><div><h2>Display language</h2><p>Language for place names &amp; addresses.</p></div><button class="close">✕</button></div>'+

@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.34] — Map type and a proper rename dialog
+
+### Added
+- **"Rename" (in the "Your maps" list) now opens a dialog** instead of a
+  bare browser `prompt()`, and it also lets you set the map's **type**:
+  🧳 Personal or ⭐ Curated.
+
+### Changed
+- **Personal maps now show a 🧳 suitcase icon** (next to the map name and
+  in "Your maps") instead of 🗂️, which read more like a Drive/folder
+  status indicator than "this is your map". Curated maps still show ⭐.
+
+---
+
 ## [0.9.33] — The actual ghost circle, take two
 
 ### Fixed
