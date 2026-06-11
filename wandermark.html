@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.32
+  VERSION: 0.9.33
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.33 The actual ghost circle (for real this time): on Google Maps,
+           the unified "camera control" (a circular pan/zoom/rotate widget
+           Google added separately from the legacy zoom/rotate controls)
+           defaults to the bottom-right and was overlapping "My location" —
+           disabled it via cameraControl:false.
     0.9.32 Mobile layout pass: (1) the map-name button no longer truncates
            long names — it wraps onto a second line. (2) "Switch
            account"/"Sign out" now sit on their own row below the
@@ -519,7 +524,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.32";
+var WANDERMARK_VERSION="0.9.33";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -807,7 +812,7 @@ var GoogleEngine={
     var s=document.createElement("script");
     s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(gkey)+"&libraries=places&callback=__wmReady&loading=async&v=weekly"+lang;
     s.async=true; s.defer=true; s.onerror=function(){ onGoogleLoadError(); }; document.head.appendChild(s); },
-  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,gestureHandling:"greedy",clickableIcons:false,
+  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,cameraControl:false,gestureHandling:"greedy",clickableIcons:false,
       zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM},rotateControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}});
     gInfo=new google.maps.InfoWindow({maxWidth:284}); acService=new google.maps.places.AutocompleteService();
     placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
