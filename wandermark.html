@@ -3,10 +3,18 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.30
+  VERSION: 0.9.31
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.31 Three fixes: (1) maps you own that were pulled down from the
+           shared Drive folder on a new device no longer land in "Shared
+           with you" — ownership is now read from Drive's owners(me) and
+           backfilled for already-synced maps too. (2) The Drive sign-in
+           box now shows "Signed in as <email>" with "Switch account" and
+           "Sign out" buttons. (3) Google Maps' built-in zoom/rotate
+           controls are now anchored bottom-left so they don't overlap the
+           "My location" button (the "second circle" was this control).
     0.9.30 "Your maps" list: map name now sits on its own line above the
            action buttons (Rename/Duplicate/etc.) instead of being
            squeezed to the left of them on narrow screens. Also: another
@@ -499,7 +507,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.30";
+var WANDERMARK_VERSION="0.9.31";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -786,7 +794,8 @@ var GoogleEngine={
     var s=document.createElement("script");
     s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(gkey)+"&libraries=places&callback=__wmReady&loading=async&v=weekly"+lang;
     s.async=true; s.defer=true; s.onerror=function(){ onGoogleLoadError(); }; document.head.appendChild(s); },
-  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,gestureHandling:"greedy",clickableIcons:false});
+  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,gestureHandling:"greedy",clickableIcons:false,
+      zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM},rotateControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}});
     gInfo=new google.maps.InfoWindow({maxWidth:284}); acService=new google.maps.places.AutocompleteService();
     placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
     googleMap.addListener("click",function(e){ pinNameModal(e.latLng.lat(),e.latLng.lng()); }); },
@@ -1017,7 +1026,9 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
     if(!signedIn){
       connectSection+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding:12px;border:1px solid var(--teal);border-radius:10px;background:#eaf6f4"><button class="pillbtn" id="mSignIn" style="background:var(--teal)">🔑 Sign in to Google</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Lets you see and edit shared maps with friends, and publish your own — one tap, once. Wandermark keeps you signed in after that.</span></div>';
     } else {
-      connectSection+='<div class="note-box" style="background:#e3f3e6;border-color:#bcdfc2;margin-top:0;margin-bottom:10px">✓ Signed in to Google — you can publish your maps and edit shared ones.</div>';
+      var who=driveUserInfo?(driveUserInfo.emailAddress||driveUserInfo.displayName):"";
+      connectSection+='<div class="note-box" style="background:#e3f3e6;border-color:#bcdfc2;margin-top:0;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="flex:1;min-width:160px">✓ Signed in'+(who?' as <b>'+esc(who)+'</b>':" to Google")+' — you can publish your maps and edit shared ones.</span><button class="mact" id="mSwitchAcct">Switch account</button><button class="mact" id="mSignOut">Sign out</button></div>';
+      if(!driveUserInfo) fetchDriveUserInfo(function(u){ if(u) mapsModal(); });
       if(dcfg.folderId) connectSection+='<p class="hint" style="margin-top:0">📁 Connected to <b>'+esc(dcfg.folderName||"a shared folder")+'</b> — its maps appear below under “Shared with you”. <a href="#" id="mChangeFolder">Change folder</a></p>';
       else connectSection+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px"><button class="pillbtn" id="mPickFolder" style="background:var(--teal)">📁 Choose shared folder from Drive</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Pick the folder a friend shared with you — its maps show up below automatically, kept in sync.</span></div>';
     }
@@ -1047,6 +1058,8 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
   var okl=modal.querySelector("#ownKeyLink"); if(okl) okl.onclick=function(e){ e.preventDefault(); ownKeyModal(); };
   var madv=modal.querySelector("#mAdvanced"); if(madv) madv.onclick=function(e){ e.preventDefault(); driveModal(); };
   var msi=modal.querySelector("#mSignIn"); if(msi) msi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); autoConnectFolder(function(){ mapsModal(); }); }); };
+  var mso=modal.querySelector("#mSignOut"); if(mso) mso.onclick=function(){ signOutDrive(function(){ toast("Signed out of Google"); mapsModal(); }); };
+  var msw=modal.querySelector("#mSwitchAcct"); if(msw) msw.onclick=function(){ switchDriveAccount(function(){ toast("Signed in to Google ✓"); mapsModal(); }); };
   var mpf=modal.querySelector("#mPickFolder"); if(mpf) mpf.onclick=function(){ pickDriveFolder(connectToFolder); };
   var mcf=modal.querySelector("#mChangeFolder"); if(mcf) mcf.onclick=function(e){ e.preventDefault(); pickDriveFolder(connectToFolder); };
   if(driveOn){ var dr=modal.querySelector("#driveRefresh"); if(dr) dr.onclick=function(){ syncDrive({then:function(){ mapsModal(); }}); }; }
@@ -1089,11 +1102,11 @@ function driveErrText(err){
 function driveAuthedFetch(url,key){ var authed=driveToken&&Date.now()<driveTokenExp;
   return fetch(url+(authed?"":(url.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(key)), authed?{headers:{Authorization:"Bearer "+driveToken}}:{}); }
 function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId+"' in parents and trashed=false");
-  var url="https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime)")+"&pageSize=300";
+  var url="https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime,owners(me))")+"&pageSize=300";
   driveAuthedFetch(url,key).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
 function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media",key).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
-var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null;
+var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null;
 var DRIVE_TOKEN_KEY="wandermark:driveToken";
 function saveDriveToken(){ try{ if(window.localStorage) localStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
 function loadDriveToken(){ try{ var raw=window.localStorage&&localStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
@@ -1106,10 +1119,23 @@ function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.cli
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   loadGIS(function(){
     if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
         else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
     pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
+/* ----- signed-in account info, sign out, switch account ----- */
+function fetchDriveUserInfo(cb){ if(!driveToken){ cb(null); return; } if(driveUserInfo){ cb(driveUserInfo); return; }
+  fetch("https://www.googleapis.com/drive/v3/about?fields="+encodeURIComponent("user(displayName,emailAddress)"),{headers:{Authorization:"Bearer "+driveToken}})
+    .then(function(r){ return r.json(); }).then(function(d){ driveUserInfo=(d&&d.user)||null; cb(driveUserInfo); }).catch(function(){ cb(null); }); }
+function signOutDrive(cb){ var tok=driveToken; driveToken=""; driveTokenExp=0; driveUserInfo=null; clearDriveToken(); updateSigninBadge();
+  try{ if(tok&&window.google&&google.accounts&&google.accounts.oauth2) google.accounts.oauth2.revoke(tok,function(){ if(cb) cb(); }); else if(cb) cb(); }catch(e){ if(cb) cb(); } }
+function switchDriveAccount(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
+  signOutDrive(function(){ loadGIS(function(){
+    var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); if(cb) cb(); }
+        else toast("Google sign-in was cancelled or failed"); },
+      error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); } });
+    client.requestAccessToken({prompt:"select_account"}); }); }); }
 /* ----- Google Drive folder picker (browse & pick visually, no link copy/paste) ----- */
 var pickerLoaded=false;
 function loadPicker(cb){ if(pickerLoaded&&window.google&&google.picker){ cb(); return; }
@@ -1169,7 +1195,7 @@ function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.
   if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
   loadGIS(function(){ if(!window.google||!google.accounts||!google.accounts.oauth2){ cb(false); return; }
     var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; saveDriveToken(); updateSigninBadge(); cb(true); } else cb(false); },
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); cb(true); } else cb(false); },
       error_callback:function(){ cb(false); } });
     client.requestAccessToken({prompt:"none"}); }); }
 function nudgeSignIn(map){ var now=Date.now();
@@ -1238,13 +1264,14 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
       driveFetchFile(f.id,key,function(txt){ if(txt){ try{ var data=JSON.parse(txt); var fallbackName=f.name.replace(/\.json$/i,"");
         var existing=null; Object.keys(LIB.maps).forEach(function(k){ if(LIB.maps[k].driveId===f.id) existing=LIB.maps[k]; });
         if(existing){
+          if(!existing.mine&&f.owners&&f.owners.some(function(o){return o.me;})) existing.mine=true;
           if(!existing.dirty){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; existing.driveModifiedTime=f.modifiedTime; existing._conflictWarnedFor=null; updated++; }
           else if(existing.driveModifiedTime&&f.modifiedTime&&f.modifiedTime!==existing.driveModifiedTime&&existing._conflictWarnedFor!==f.modifiedTime){
             existing._conflictWarnedFor=f.modifiedTime;
             toast("Heads up — someone else also changed “"+existing.name+"” on Drive since you started editing. Push your changes soon, or theirs may get overwritten (or vice versa).");
           }
         }
-        else { var id=uid(); LIB.maps[id]={id:id,name:data.name||fallbackName,kind:data.kind||"personal",source:"drive",driveId:f.id,driveModifiedTime:f.modifiedTime,places:(data.places||[]).map(normalizePlace),categories:(data.categories&&data.categories.length)?data.categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); added++; }
+        else { var id=uid(); var ownedByMe=!!(f.owners&&f.owners.some(function(o){return o.me;})); LIB.maps[id]={id:id,name:data.name||fallbackName,kind:data.kind||"personal",mine:ownedByMe,source:"drive",driveId:f.id,driveModifiedTime:f.modifiedTime,places:(data.places||[]).map(normalizePlace),categories:(data.categories&&data.categories.length)?data.categories:freshCats(),createdAt:Date.now()}; LIB.order.push(id); added++; }
       }catch(e){} } setTimeout(next,80); });
     })();
   });
