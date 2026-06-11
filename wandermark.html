@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.36
+  VERSION: 0.9.37
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.37 On boot, Wandermark no longer attempts a silent Google
+           re-auth on devices that have never signed in to Drive. On
+           mobile, that attempt could make a window briefly flash open
+           and close (Google Identity Services' "prompt:none" check),
+           even though there's no session to refresh. Devices that have
+           signed in before are unaffected.
     0.9.36 Maps are no longer allowed to silently stay "local only": if
            you create a new map (or duplicate/import one) and no Drive
            folder is connected yet, a dialog now asks you to connect one
@@ -539,7 +545,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.36";
+var WANDERMARK_VERSION="0.9.37";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1139,11 +1145,11 @@ function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId
   driveAuthedFetch(url,key).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
 function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media",key).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
-var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null;
+var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null, driveEverSignedIn=false;
 var DRIVE_TOKEN_KEY="wandermark:driveToken";
 function saveDriveToken(){ try{ if(window.localStorage) localStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
 function loadDriveToken(){ try{ var raw=window.localStorage&&localStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
-  var d=JSON.parse(raw); if(d&&d.t&&d.e>Date.now()){ driveToken=d.t; driveTokenExp=d.e; } }catch(e){} }
+  var d=JSON.parse(raw); if(d&&d.t){ driveEverSignedIn=true; if(d.e>Date.now()){ driveToken=d.t; driveTokenExp=d.e; } } }catch(e){} }
 function clearDriveToken(){ try{ if(window.localStorage) localStorage.removeItem(DRIVE_TOKEN_KEY); }catch(e){} }
 function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2){ cb(); return; }
   var s=document.createElement("script"); s.src="https://accounts.google.com/gsi/client"; s.async=true; s.defer=true;
@@ -1591,7 +1597,7 @@ function boot(){ wireUI(); loadDriveToken();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
-      if(appSettings.drive.clientId&&!(driveToken&&Date.now()<driveTokenExp)) trySilentDriveToken(function(){ updateSigninBadge(); });
+      if(appSettings.drive.clientId&&driveEverSignedIn&&!(driveToken&&Date.now()<driveTokenExp)) trySilentDriveToken(function(){ updateSigninBadge(); });
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling();
       var lp=parseLinkParam(); if(lp) loadLinkMap(lp.id,lp.mode); }); }); }
