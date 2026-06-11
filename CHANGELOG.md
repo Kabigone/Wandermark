@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.27] — Replace "My location" icon with inline SVG
+
+### Fixed
+- The ⌖ Unicode glyph used for the "My location" button rendered with
+  extra/offset strokes on some Android fonts, looking like a duplicate
+  circle or broken shadow next to the button. Replaced with a small
+  inline SVG crosshair icon for consistent rendering everywhere.
+
+---
+
+## [0.9.26] — Wrap long map names in "Your maps"
+
+### Fixed
+- On narrow screens (e.g. Android Chrome), map names in the "Your maps"
+  list were truncated with `…` because there wasn't enough horizontal
+  room next to the action buttons. Names now wrap onto additional lines
+  instead of being cut off.
+
+---
+
 ## [0.9.25] — Fix "My location" button cut off on mobile Chrome
 
 ### Fixed
