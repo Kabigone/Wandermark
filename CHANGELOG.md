@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.37] — Don't attempt silent re-auth on devices that never signed in
+
+### Fixed
+- **On boot, a window could briefly flash open and close on mobile**,
+  even while signed out. This was Wandermark trying a silent Google
+  re-auth (`prompt:"none"`) on every boot if Drive was configured —
+  Google Identity Services implements that "silent" check with a
+  popup/tab on some mobile browsers. Now skipped entirely on devices that
+  have never signed in to Drive, since there's no session to refresh.
+  Devices that have signed in before are unaffected.
+
+---
+
 ## [0.9.36] — Maps always have a place to live
 
 ### Added
