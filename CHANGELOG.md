@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.28] — Attempt fix for ghost circle next to "My location" button
+
+### Fixed
+- On Chrome/Windows (commonly with display scaling other than 100%), a
+  faint duplicate circle outline could appear offset next to the "My
+  location" button — likely a subpixel rendering artifact from
+  `box-shadow` + `border-radius:50%` on an absolutely positioned element.
+  Forced the button onto its own compositor layer with
+  `transform:translateZ(0)`, which typically resolves this class of
+  Chrome rendering glitch.
+
+---
+
 ## [0.9.27] — Replace "My location" icon with inline SVG
 
 ### Fixed
