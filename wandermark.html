@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.51
+  VERSION: 0.9.52
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.52 Fixed the icon picker showing the same emoji twice in search
+           results when the official Unicode name and a travel synonym
+           pointed to the same emoji with/without a variation selector
+           (e.g. "lev" showed 🕴 "man in suit levitating" twice).
     0.9.51 Fixed the mobile header again: the "Sign in to Google" badge
            (shown only when signed out) now gets its own row instead of
            crowding the row with the map-name button and ⋯ menu.
@@ -662,7 +666,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.51";
+var WANDERMARK_VERSION="0.9.52";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1326,8 +1330,8 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     customInp.addEventListener("input",function(){ var v=customInp.value.trim();
       if(!v){ chosenIcon.v=""; clearIconSel(); ab.classList.add("sel"); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
       if(isEmojiLike(v)){ chosenIcon.v=v; clearIconSel(); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
-      var q=v.toLowerCase(), matches=[];
-      Object.keys(EMOJI_NAMES).forEach(function(name){ if(name.indexOf(q)>=0&&matches.indexOf(EMOJI_NAMES[name])<0) matches.push(EMOJI_NAMES[name]); });
+      var q=v.toLowerCase(), matches=[], seen={};
+      Object.keys(EMOJI_NAMES).forEach(function(name){ if(name.indexOf(q)<0) return; var em=EMOJI_NAMES[name], key=em.replace(/️/g,""); if(seen[key]) return; seen[key]=true; matches.push(em); });
       renderIconGrid(matches.length?matches.slice(0,60):PLACE_ICONS); });
     pi.appendChild(customInp);
     var ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");

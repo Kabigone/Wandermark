@@ -10,6 +10,15 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.52] — Fix duplicate emoji in icon search results
+
+### Fixed
+- The icon picker's name search could show the same emoji twice (e.g.
+  searching "lev" showed 🕴 "man in suit levitating" twice) when the
+  generated Unicode-name table and the travel-synonym list pointed to
+  the same emoji with and without a variation selector (️). Results are
+  now deduped ignoring that selector.
+
 ## [0.9.51] — Fix mobile header overflow when signed out
 
 ### Fixed
