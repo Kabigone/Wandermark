@@ -10,6 +10,16 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.41] — POI "add" popup matches the normal place popup
+
+### Changed
+- **The "add this place" popup for Google Maps POIs (0.9.40) now reuses
+  the same popup layout as an existing place** — photo, category badge,
+  rating/price, address, hours grid, and website/Tabelog/Instagram links —
+  with editable category, notes, and tags fields, and a single "＋ Add"
+  button. Previously it was a separate bare modal with just a category
+  dropdown.
+
 ## [0.9.40] — Tapping a Google Maps POI offers to add it, not a blank pin
 
 ### Changed

@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.40
+  VERSION: 0.9.41
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.41 The "add this POI" popup (from 0.9.40) now looks like the
+           normal place popup — photo, category badge, rating/price,
+           address, hours grid, and links — with editable category,
+           notes, and tags fields and a single "＋ Add" button, instead
+           of a bare modal with just a category dropdown.
     0.9.40 On Google Maps, clicking a labeled place (a "POI" — restaurant,
            shop, landmark, etc.) no longer drops a generic "Drop a pin"
            at that spot. Instead it looks up that place's name, address,
@@ -584,7 +589,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.40";
+var WANDERMARK_VERSION="0.9.41";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -786,29 +791,31 @@ function metaLineHtml(p){ var bits=[];
   if(p.rating) bits.push('<span class="rating">★ '+p.rating.toFixed(1)+"</span>");
   var price=priceLevelStr(p); if(price) bits.push('<span class="price">'+price+"</span>");
   if(!bits.length) return ""; return '<div class="pmetaline">'+bits.join(" · ")+"</div>"; }
-function makePopupNode(p){ var c=catById(p.categoryId);
+function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   var st=statusNow(p),nowtag = st===true?'<span class="nowtag o">Open now</span>':(st===false?'<span class="nowtag c">Closed now</span>':"");
   var node=document.createElement("div"); node.className="pop";
-  var opts=state.categories.map(function(k){return '<option value="'+k.id+'"'+(k.id===p.categoryId?" selected":"")+'>'+k.emoji+" "+esc(k.name)+"</option>";}).join("");
+  var catOpts=state.categories.map(function(k){return '<option value="'+k.id+'"'+(k.id===p.categoryId?" selected":"")+'>'+k.emoji+" "+esc(k.name)+"</option>";}).join("");
   var links='<div class="plinks">'+(p.website?'<a target="_blank" rel="noopener" href="'+esc(p.website)+'">🌐 Website</a>':"")+
     '<a target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">🍽 Tabelog</a>'+
     '<a target="_blank" rel="noopener" href="'+igUrl(p)+'">📷 Instagram</a></div>';
-  var editable=!ui.readOnly;
+  var editable=opts.add||!ui.readOnly;
   node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
     '<span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
     (editable?
-      '<select class="ppcat">'+opts+"</select>"+
+      '<select class="ppcat">'+catOpts+"</select>"+
       '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
       '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
-      '<button class="ppsave">Save</button><button class="ppdel">Delete</button></div>'
+      (opts.add?'<button class="ppsave">＋ Add</button>':'<button class="ppsave">Save</button><button class="ppdel">Delete</button>')+'</div>'
     :
       (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":"")+
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a></div>');
-  if(editable){
+  if(opts.add){
+    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
+  } else if(editable){
     node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
     node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
   }
@@ -1063,16 +1070,14 @@ function renderTable(){ var list=getFiltered(),anchor=getAnchor(),today=todayCod
   t.querySelectorAll("th[data-col]").forEach(function(th){ th.onclick=function(){ var col=th.getAttribute("data-col"); if(col===sortCol) sortDir*=-1; else {sortCol=col;sortDir=1;} renderTable(); }; }); }
 
 /* ===================== pin / address / geo ===================== */
-function poiModal(placeId,lat,lng){ if(ui.readOnly||scrim.classList.contains("on")) return;
+function poiModal(placeId,lat,lng){ if(ui.readOnly) return;
   if(!placesService){ pinNameModal(lat,lng); return; }
   placesService.getDetails({placeId:placeId,fields:GET_FIELDS},function(d,st){
     if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ pinNameModal(lat,lng); return; }
-    var place=placeFromDetails(d,d.name||"Place",placeId);
-    openModal('<div class="mh"><div><h2>'+esc(place.name)+'</h2><p>'+esc(place.address||"")+'</p></div><button class="close">✕</button></div>'+
-      '<div class="mb"><div class="field"><label>Category</label><select id="pinCat">'+state.categories.map(function(k){return '<option value="'+k.id+'"'+(k.id===place.categoryId?" selected":"")+'>'+k.emoji+" "+esc(k.name)+"</option>";}).join("")+"</select></div>"+
-      '<button class="pillbtn" id="pinAdd">＋ Add to map</button></div>');
-    modal.querySelector(".close").onclick=closeModal;
-    modal.querySelector("#pinAdd").onclick=function(){ place.categoryId=modal.querySelector("#pinCat").value; addPlace(place); closeModal(); }; }); }
+    var place=normalizePlace(placeFromDetails(d,d.name||"Place",placeId));
+    gInfo.setContent(makePopupNode(place,{add:true}));
+    gInfo.setPosition({lat:lat,lng:lng});
+    gInfo.open(googleMap); }); }
 function pinNameModal(lat,lng){ if(ui.readOnly||scrim.classList.contains("on")) return;
   openModal('<div class="mh"><div><h2>Drop a pin</h2><p>'+lat.toFixed(4)+", "+lng.toFixed(4)+'</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="field"><label>Name</label><input id="pinName" placeholder="What’s here?"></div>'+
