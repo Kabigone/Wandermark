@@ -10,6 +10,23 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.48] — Emoji name search, fix double-tap dialog popup
+
+### Added
+- The icon picker's emoji text field now also matches by emoji name (e.g.
+  typing "owl" or "sushi" filters the quick-pick grid to matching emoji),
+  using a new curated name→emoji lookup. Pasting an actual emoji still
+  works as before.
+
+### Fixed
+- On Google Maps, double-tapping to zoom no longer also pops up the
+  "add place"/place-info dialog. The pending tap-to-add dialog (debounced
+  300ms to distinguish a single tap from the first half of a double-tap)
+  is now also cancelled by any map pan or zoom started within that window
+  — not just a recognized `dblclick` — since some double-tap gestures are
+  reported as a pan rather than a `dblclick` event. Same fix applied to
+  the OpenStreetMap/Leaflet engine for consistency.
+
 ## [0.9.47] — Free-text emoji icon, Japanese-aware Google search
 
 ### Added
