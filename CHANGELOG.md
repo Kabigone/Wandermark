@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.54] — "My location" zooms in, shown automatically when permitted
+
+### Changed
+- The 📍 "My location" button now zooms in to a set level (16) if the
+  map is currently zoomed out further than that, matching the behavior
+  of Google Maps' own locate button. If you're already zoomed in closer
+  than that, your zoom level is left alone.
+
+### Added
+- The "you are here" dot now appears automatically on load (without
+  panning or zooming) if you've previously granted location permission —
+  no need to tap the locate button first. If permission hasn't been
+  decided yet, nothing is requested automatically (no surprise prompt);
+  tapping the button still asks as before.
+
 ## [0.9.53] — Fix kanji search-to-add requiring 3+ characters
 
 ### Fixed

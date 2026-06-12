@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.53
+  VERSION: 0.9.54
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.54 The "My location" button now zooms in to a set level (like
+           Google Maps' own locate button), instead of only panning at
+           the current zoom. The "you are here" dot also now shows
+           automatically on load if location permission was already
+           granted, without needing to tap the button first.
     0.9.53 Found the real cause of kanji search-to-add not finding places
            like 永吉: the search box required at least 3 characters
            before searching at all, but 2-character kanji place names are
@@ -671,7 +676,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.53";
+var WANDERMARK_VERSION="0.9.54";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1104,6 +1109,7 @@ var DEFAULT_CATS_BY_ID={}; DEFAULT_CATS.forEach(function(c){ DEFAULT_CATS_BY_ID[
    unless/until edited). */
 function freshCats(){ return DEFAULT_CATS.map(function(c){return {id:c.id,name:c.name,color:c.color,emoji:c.emoji,custom:false};}); }
 var DEF={lat:35.6762,lng:139.6503,z:12};
+var LOCATE_ZOOM=16; /* zoom level the "My location" button zooms to, like Google Maps' own locate button */
 var DAYNAME={monday:"Mo",tuesday:"Tu",wednesday:"We",thursday:"Th",friday:"Fr",saturday:"Sa",sunday:"Su"};
 var DOWCODES=["Su","Mo","Tu","We","Th","Fr","Sa"];
 var DAYORDER=[["Mo","Mon"],["Tu","Tue"],["We","Wed"],["Th","Thu"],["Fr","Fri"],["Sa","Sat"],["Su","Sun"]];
@@ -1381,6 +1387,7 @@ var LeafletEngine={
   showMe:function(loc){ if(leafletMe){ leafletMap.removeLayer(leafletMe); leafletMe=null; }
     leafletMe=L.marker([loc.lat,loc.lng],{icon:L.divIcon({className:"",html:'<div class="mk-me"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:1000,interactive:false}).addTo(leafletMap); },
   panTo:function(loc){ if(leafletMap) leafletMap.panTo([loc.lat,loc.lng]); },
+  panToZoom:function(loc,z){ if(leafletMap) leafletMap.setView([loc.lat,loc.lng],Math.max(leafletMap.getZoom(),z)); },
   resize:function(){ if(leafletMap) leafletMap.invalidateSize(); },
   geocode:function(addr,cb){ var lang=appSettings.lang&&appSettings.lang!=="native"?("&accept-language="+appSettings.lang):"";
     fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1"+lang+"&q="+encodeURIComponent(addr),{headers:{Accept:"application/json"}})
@@ -1442,6 +1449,7 @@ var GoogleEngine={
     gMe=new google.maps.Marker({position:{lat:loc.lat,lng:loc.lng},map:googleMap,zIndex:1000,clickable:false,
       icon:{path:google.maps.SymbolPath.CIRCLE,scale:7,fillColor:"#4285F4",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
   panTo:function(loc){ if(googleMap) googleMap.panTo({lat:loc.lat,lng:loc.lng}); },
+  panToZoom:function(loc,z){ if(googleMap){ googleMap.panTo({lat:loc.lat,lng:loc.lng}); if(googleMap.getZoom()<z) googleMap.setZoom(z); } },
   resize:function(){},
   geocode:function(addr,cb){ if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
   suggest:function(q,cb){ if(!acService||!placesService){ cb([]); return; }
@@ -1529,9 +1537,21 @@ function startEngine(kind){ teardownMap();
 function locateMe(){ if(!navigator.geolocation){ toast("Location isn’t available in this browser"); return; }
   toast("Finding your location…");
   navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
-      ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panTo(loc); } },
+      ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panToZoom(loc,LOCATE_ZOOM); } },
     function(){ toast("Couldn’t get your location"); },
     {enableHighAccuracy:true,maximumAge:30000,timeout:10000}); }
+/* Quietly show the "you are here" dot on load, without panning/zooming or
+   any toast — mirrors how Google Maps shows your location automatically
+   once you've granted permission. Only runs if permission was already
+   granted previously (checked via the Permissions API where available),
+   so it never pops an unsolicited location prompt on load. */
+function locateMeQuiet(){ if(!navigator.geolocation) return;
+  function go(){ navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+      ui.myLocation=loc; if(ui.mapReady) Engine.showMe(loc); },
+    function(){}, {enableHighAccuracy:false,maximumAge:60000,timeout:8000}); }
+  if(navigator.permissions&&navigator.permissions.query){
+    navigator.permissions.query({name:"geolocation"}).then(function(p){ if(p.state==="granted") go(); }).catch(function(){});
+  } else go(); }
 function onGkeyRejected(){ gkeyBlocked=true; var ownKey=(gkey&&gkey!==CONFIG.apiKey);
   toast(ownKey?"Google rejected that key — switching to OpenStreetMap. Open 🗂️ Map ▾ → Map style to try a different one.":"Google rejected the shared Maps connection — switching to OpenStreetMap.");
   if(ownKey){ gkey=""; Store.set(GKEY_KEY,""); }
@@ -2253,6 +2273,7 @@ function boot(){ wireUI(); loadDriveToken();
     if(!appSettings.drive.clientId && CONFIG.oauthClientId) appSettings.drive.clientId=CONFIG.oauthClientId;
     if(appSettings.drive.key && appSettings.drive.folderId && !appSettings.drive.auto && (CONFIG.apiKey||CONFIG.driveFolderId)) appSettings.drive.auto=true;
     Store.get(GKEY_KEY).then(function(k){ gkey=k||CONFIG.apiKey||""; renderMapBtn(); updateSigninBadge(); startEngine(gkey?"google":"osm");
+      locateMeQuiet();
       var lp=parseLinkParam();
       if(lp){ loadLinkMap(lp.id,lp.mode); }
       else if(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp){ publishAllUnpublished(); }
