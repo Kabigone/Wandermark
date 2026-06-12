@@ -10,6 +10,23 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.42] — Don't eat the first tap of a double-tap, generic "Eat" icon
+
+### Fixed
+- **Tapping the map to drop a pin (or the new "add this POI" popup)
+  fired immediately on the first tap**, which on mobile interrupted the
+  standard double-tap(-and-hold-drag) zoom gesture before it could
+  register — every attempt to zoom that way dropped a pin/POI dialog
+  instead. Map clicks now wait ~300ms; if a second tap/click (the start
+  of a double-tap) arrives in that window, the pin/POI dialog is
+  cancelled and the map's own double-tap zoom handles it.
+
+### Changed
+- **Default "Eat" category icon is now 🍴** (fork and knife) instead of
+  🍜 (ramen), for new maps. 🍴 is also now in the icon picker for
+  existing categories — open ⋯ → Categories → tap "Eat" → pick a new
+  icon to update an existing map.
+
 ## [0.9.41] — POI "add" popup matches the normal place popup
 
 ### Changed

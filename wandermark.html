@@ -3,10 +3,17 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.41
+  VERSION: 0.9.42
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.42 Tapping the map to drop a pin (or add a POI) no longer fires
+           instantly on the first tap of a double-tap — there's now a
+           ~300ms window where a second tap/click cancels it, so
+           double-tap(-hold) zoom on mobile works without an "add pin"
+           dialog popping up first. Also: the default "Eat" category
+           icon is now a generic 🍴 fork-and-knife instead of 🍜 ramen
+           (existing maps can change theirs via the category editor).
     0.9.41 The "add this POI" popup (from 0.9.40) now looks like the
            normal place popup — photo, category badge, rating/price,
            address, hours grid, and links — with editable category,
@@ -589,7 +596,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.41";
+var WANDERMARK_VERSION="0.9.42";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -607,9 +614,9 @@ var CONFIG={
 
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
-var EMOJIS=["🍜","☕️","🥐","🍷","🏨","⛩️","🏛️","🛍️","🌳","🍣","🍱","🍦","🍺","🎑","📸","🎨","🚶","🏖️","🗼","🚉","💴","🧋","🍵","⭐️"];
+var EMOJIS=["🍴","🍜","☕️","🥐","🍷","🏨","⛩️","🏛️","🛍️","🌳","🍣","🍱","🍦","🍺","🎑","📸","🎨","🚶","🏖️","🗼","🚉","💴","🧋","🍵","⭐️"];
 var DEFAULT_CATS=[
-  {id:"eat",name:"Eat",color:"#e0533d",emoji:"🍜"},{id:"coffee",name:"Coffee",color:"#9a6b45",emoji:"☕️"},
+  {id:"eat",name:"Eat",color:"#e0533d",emoji:"🍴"},{id:"coffee",name:"Coffee",color:"#9a6b45",emoji:"☕️"},
   {id:"bakery",name:"Bakery",color:"#e08a2f",emoji:"🥐"},{id:"drinks",name:"Drinks",color:"#9a52c8",emoji:"🍷"},
   {id:"stay",name:"Stay",color:"#3d7bd1",emoji:"🏨"},{id:"see",name:"See",color:"#2f8f86",emoji:"⛩️"},
   {id:"shop",name:"Shop",color:"#d14f93",emoji:"🛍️"},{id:"other",name:"Other",color:"#6b7280",emoji:"📍"}];
@@ -823,14 +830,18 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
 /* ===================== Leaflet engine ===================== */
-var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null;
+var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null, leafletClickTimer=null;
 var LeafletEngine={
   ready:function(cb){ if(window.L) cb(); else setTimeout(function(){LeafletEngine.ready(cb);},150); },
   init:function(el){ leafletMap=L.map(el,{zoomControl:true,attributionControl:false}).setView([DEF.lat,DEF.lng],DEF.z);
     L.control.attribution({position:"bottomleft"}).addTo(leafletMap);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(leafletMap);
     leafletLayer=L.layerGroup().addTo(leafletMap);
-    leafletMap.on("click",function(e){ pinNameModal(e.latlng.lat,e.latlng.lng); }); },
+    leafletMap.on("click",function(e){ if(ui.readOnly) return;
+      if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; return; }
+      var lat=e.latlng.lat,lng=e.latlng.lng;
+      leafletClickTimer=setTimeout(function(){ leafletClickTimer=null; pinNameModal(lat,lng); },300); });
+    leafletMap.on("dblclick",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } }); },
   setView:function(v){ if(leafletMap) leafletMap.setView([v.lat,v.lng],v.z||12); },
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
   refresh:function(list){ leafletLayer.clearLayers(); markers={};
@@ -861,7 +872,7 @@ var LeafletEngine={
 };
 
 /* ===================== Google engine ===================== */
-var googleMap=null, gInfo=null, gMarkers={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false;
+var googleMap=null, gInfo=null, gMarkers={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false, gClickTimer=null;
 function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
   return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
 var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website","rating","price_level"];
@@ -884,8 +895,11 @@ var GoogleEngine={
     gInfo=new google.maps.InfoWindow({maxWidth:284}); acService=new google.maps.places.AutocompleteService();
     placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
     googleMap.addListener("click",function(e){ if(ui.readOnly) return;
-      if(e.placeId){ e.stop(); poiModal(e.placeId,e.latLng.lat(),e.latLng.lng()); return; }
-      pinNameModal(e.latLng.lat(),e.latLng.lng()); }); },
+      if(e.placeId) e.stop();
+      if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; return; }
+      var pid=e.placeId, lat=e.latLng.lat(), lng=e.latLng.lng();
+      gClickTimer=setTimeout(function(){ gClickTimer=null; if(pid) poiModal(pid,lat,lng); else pinNameModal(lat,lng); },300); });
+    googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } }); },
   setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
   getCenter:function(){ return googleMap.getCenter().toJSON(); },
   refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
