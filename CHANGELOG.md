@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.47] — Free-text emoji icon, Japanese-aware Google search
+
+### Added
+- The per-place icon picker now has a text field for typing or pasting any
+  Unicode emoji, in addition to the curated quick-pick list below it.
+
+### Fixed
+- Google search-to-add requests (`AutocompleteService` and `textSearch`)
+  now set `language:"ja"` for the request when the query itself contains
+  Japanese kana/kanji, overriding the page's overall display language for
+  that search. The page-level language (set once at load from
+  `appSettings.lang` or the browser default) could otherwise cause Places
+  matching to rank or omit a kanji-named place even though it exists.
+
 ## [0.9.46] — Always-merged Google search, collapsible icon picker
 
 ### Fixed

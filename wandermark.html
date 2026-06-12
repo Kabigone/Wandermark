@@ -3,10 +3,18 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.46
+  VERSION: 0.9.47
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.47 The per-place icon picker now also has a text field for typing
+           or pasting any Unicode emoji, not just the curated quick-pick
+           list (which still sits below it for one-tap choices). Also: when
+           a "search to add" query contains Japanese kana/kanji, the Google
+           Places requests now explicitly ask for Japanese-language
+           matching for that query, even if the page's overall display
+           language is something else — addresses kanji-named places not
+           surfacing in search.
     0.9.46 Google search-to-add now always runs a text search alongside
            autocomplete and merges the results (deduped by place), instead
            of only falling back to text search when autocomplete returned
@@ -435,6 +443,7 @@
   .pop .pprow .ppcat{flex:1}
   .pop .ppiconbtn{flex:0 0 auto;margin-top:5px;font-size:17px;padding:5px 10px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;cursor:pointer;line-height:1.4}
   .pop .ppicon{max-height:120px;overflow-y:auto}
+  .pop .ppicon input.ppiconcustom{flex:1 1 100%;width:100%;margin:0 0 4px;order:-1}
   .chip.sel{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
 
   #tableView{position:absolute;inset:0;background:var(--paper);z-index:400;display:none;flex-direction:column}
@@ -638,7 +647,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.46";
+var WANDERMARK_VERSION="0.9.47";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -902,13 +911,18 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   if(editable){
     var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
     function syncIconBtn(){ iconBtn.textContent=chosenIcon.v||autoIcon; iconBtn.title=chosenIcon.v?"Place icon (tap to change)":"Place icon: Automatic "+autoIcon+" (tap to change)"; }
-    function pickIcon(em,btn){ chosenIcon.v=em; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); btn.classList.add("sel"); syncIconBtn(); pi.style.display="none"; }
+    function clearIconSel(){ pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); }
+    function pickIcon(em,btn){ chosenIcon.v=em; clearIconSel(); if(btn) btn.classList.add("sel"); customInp.value=(em&&PLACE_ICONS.indexOf(em)<0)?em:""; syncIconBtn(); pi.style.display="none"; }
     syncIconBtn();
     iconBtn.onclick=function(){ pi.style.display=(pi.style.display==="none")?"flex":"none"; };
+    var customInp=document.createElement("input"); customInp.type="text"; customInp.className="ppiconcustom"; customInp.placeholder="Or type/paste any emoji…"; customInp.maxLength=8;
+    if(chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0) customInp.value=chosenIcon.v;
+    customInp.addEventListener("input",function(){ var v=customInp.value.trim(); chosenIcon.v=v; clearIconSel(); if(!v) ab.classList.add("sel"); syncIconBtn(); });
+    pi.appendChild(customInp);
     var ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
     ab.onclick=function(){ pickIcon("",ab); };
     pi.appendChild(ab);
-    (chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0?[chosenIcon.v].concat(PLACE_ICONS):PLACE_ICONS).forEach(function(em){
+    PLACE_ICONS.forEach(function(em){
       var b=document.createElement("button"); b.type="button"; b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
       b.onclick=function(){ pickIcon(em,b); };
       pi.appendChild(b); });
@@ -1024,11 +1038,17 @@ var GoogleEngine={
       tsResults.concat(acResults).forEach(function(it){ if(seen[it.placeId]) return; seen[it.placeId]=true; merged.push(it); });
       cb(merged.slice(0,8)); }
     var acReq={input:q}; try{ var b=googleMap.getBounds(); if(b) acReq.bounds=b; }catch(e){}
+    var tsReq={query:q}; try{ var b2=googleMap.getBounds(); if(b2){ tsReq.location=b2.getCenter(); tsReq.radius=30000; } }catch(e){}
+    /* If the page's overall language (set once at load, from appSettings.lang
+       or the browser's default) doesn't match a CJK query, Places matching
+       can rank/omit the right result even though it exists (e.g. a place
+       named only in kanji, searched while the UI language is English).
+       Override the language per-request when the query itself is CJK. */
+    if(/[぀-ヿ㐀-鿿豈-﫿]/.test(q)){ acReq.language="ja"; tsReq.language="ja"; }
     acService.getPlacePredictions(acReq,function(preds,status){
       acResults=(status===google.maps.places.PlacesServiceStatus.OK&&preds)?preds.map(function(pr){ var catId=autoCategoryGoogle(pr.types); var sf=pr.structured_formatting||{};
         return {name:sf.main_text||pr.description,address:sf.secondary_text||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.description)};
       }):[]; maybeDone(); });
-    var tsReq={query:q}; try{ var b2=googleMap.getBounds(); if(b2){ tsReq.location=b2.getCenter(); tsReq.radius=30000; } }catch(e){}
     placesService.textSearch(tsReq,function(results,status){
       tsResults=(status===google.maps.places.PlacesServiceStatus.OK&&results)?results.map(function(pr){ var catId=autoCategoryGoogle(pr.types);
         return {name:pr.name,address:pr.formatted_address||pr.vicinity||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.name)};
