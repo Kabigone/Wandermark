@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.46] — Always-merged Google search, collapsible icon picker
+
+### Fixed
+- Google search-to-add (`GoogleEngine.suggest`) now always queries
+  `PlacesService.textSearch` alongside `AutocompleteService` and merges the
+  results (deduped by `place_id`), instead of only falling back to text
+  search when autocomplete returned nothing. Autocomplete almost always
+  returns *some* predictions, so the previous fallback rarely triggered —
+  this ensures an exact-name text-search hit (e.g. a place's kanji name)
+  isn't dropped just because autocomplete returned other results first.
+
+### Changed
+- The per-place icon picker in the place popup (added in 0.9.43) is no
+  longer always expanded — it's now a small button next to the category
+  dropdown showing the current icon, which opens the icon grid on tap.
+
 ## [0.9.45] — Mobile header fix, Google search fallback, "already on map" hint
 
 ### Fixed

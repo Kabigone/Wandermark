@@ -3,10 +3,19 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.45
+  VERSION: 0.9.46
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.46 Google search-to-add now always runs a text search alongside
+           autocomplete and merges the results (deduped by place), instead
+           of only falling back to text search when autocomplete returned
+           nothing — autocomplete almost always returns *something*, just
+           sometimes not the exact-name match (e.g. a place's kanji name)
+           that the regular Maps search box finds. Also: the per-place icon
+           picker in the popup is now collapsed behind a small button next
+           to the category dropdown — tap it to open the icon grid, instead
+           of it always taking up a big block of space.
     0.9.45 Fixed the mobile header: the "Wandermark" title no longer eats
            the row the map-name button and ⋯ menu share (just the compass
            glyph remains on small screens). Google search-to-add now falls
@@ -422,6 +431,10 @@
   .pop .pacts .gm{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
   .pop .pacts .ppdel{color:var(--closed)}
   .pop select,.pop textarea,.pop input{width:100%;margin-top:5px;padding:6px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;font-family:inherit}
+  .pop .pprow{display:flex;gap:6px}
+  .pop .pprow .ppcat{flex:1}
+  .pop .ppiconbtn{flex:0 0 auto;margin-top:5px;font-size:17px;padding:5px 10px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;cursor:pointer;line-height:1.4}
+  .pop .ppicon{max-height:120px;overflow-y:auto}
   .chip.sel{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
 
   #tableView{position:absolute;inset:0;background:var(--paper);z-index:400;display:none;flex-direction:column}
@@ -625,7 +638,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.45";
+var WANDERMARK_VERSION="0.9.46";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -875,8 +888,8 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
     (editable?
-      '<select class="ppcat">'+catOpts+"</select>"+
-      '<label style="font-size:11px;color:var(--muted);display:block;margin:6px 0 2px">Icon</label><div class="em-pick ppicon"></div>'+
+      '<div class="pprow"><select class="ppcat">'+catOpts+'</select><button type="button" class="ppiconbtn" title="Place icon"></button></div>'+
+      '<div class="em-pick ppicon" style="display:none"></div>'+
       '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
       '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
@@ -887,13 +900,17 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a></div>');
   var chosenIcon={v:p.icon||""};
   if(editable){
-    var pi=node.querySelector(".ppicon"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
-    var ab=document.createElement("button"); ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
-    ab.onclick=function(){ chosenIcon.v=""; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); ab.classList.add("sel"); };
+    var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
+    function syncIconBtn(){ iconBtn.textContent=chosenIcon.v||autoIcon; iconBtn.title=chosenIcon.v?"Place icon (tap to change)":"Place icon: Automatic "+autoIcon+" (tap to change)"; }
+    function pickIcon(em,btn){ chosenIcon.v=em; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); btn.classList.add("sel"); syncIconBtn(); pi.style.display="none"; }
+    syncIconBtn();
+    iconBtn.onclick=function(){ pi.style.display=(pi.style.display==="none")?"flex":"none"; };
+    var ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
+    ab.onclick=function(){ pickIcon("",ab); };
     pi.appendChild(ab);
     (chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0?[chosenIcon.v].concat(PLACE_ICONS):PLACE_ICONS).forEach(function(em){
-      var b=document.createElement("button"); b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
-      b.onclick=function(){ chosenIcon.v=em; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); };
+      var b=document.createElement("button"); b.type="button"; b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
+      b.onclick=function(){ pickIcon(em,b); };
       pi.appendChild(b); });
   }
   if(opts.add){
@@ -995,21 +1012,27 @@ var GoogleEngine={
   suggest:function(q,cb){ if(!acService||!placesService){ cb([]); return; }
     function fromDetails(placeId,fallbackName){ return function(done){ placesService.getDetails({placeId:placeId,fields:GET_FIELDS},function(d,st){
       if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ done(null); return; } done(placeFromDetails(d,fallbackName,placeId)); }); }; }
-    /* Autocomplete is tuned for "predictions as you type" and can miss exact-name
-       matches that the regular Google Maps search box finds fine (notably some
-       Japanese place names typed in kanji). If it comes back empty, fall back to
-       a text search — closer to what Maps' own search box does. */
-    function textSearchFallback(){ var req={query:q}; try{ var b=googleMap.getBounds(); if(b){ req.location=b.getCenter(); req.radius=30000; } }catch(e){}
-      placesService.textSearch(req,function(results,status){ if(status!==google.maps.places.PlacesServiceStatus.OK||!results){ cb([]); return; }
-        cb(results.map(function(pr){ var catId=autoCategoryGoogle(pr.types);
-          return {name:pr.name,address:pr.formatted_address||pr.vicinity||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.name)};
-        })); }); }
-    var req={input:q}; try{ var b=googleMap.getBounds(); if(b) req.bounds=b; }catch(e){}
-    acService.getPlacePredictions(req,function(preds,status){
-      if(status!==google.maps.places.PlacesServiceStatus.OK||!preds||!preds.length){ textSearchFallback(); return; }
-      cb(preds.map(function(pr){ var catId=autoCategoryGoogle(pr.types); var sf=pr.structured_formatting||{};
+    /* Autocomplete is tuned for "predictions as you type" and can rank or omit
+       exact-name matches that the regular Google Maps search box finds fine
+       (notably some Japanese place names typed in kanji). Always run a text
+       search alongside it — closer to what Maps' own search box does — and
+       merge the two, deduped by place, so a good text-search hit isn't lost
+       just because autocomplete returned something (anything) first. */
+    var acResults=null, tsResults=null;
+    function maybeDone(){ if(acResults===null||tsResults===null) return;
+      var seen={}, merged=[];
+      tsResults.concat(acResults).forEach(function(it){ if(seen[it.placeId]) return; seen[it.placeId]=true; merged.push(it); });
+      cb(merged.slice(0,8)); }
+    var acReq={input:q}; try{ var b=googleMap.getBounds(); if(b) acReq.bounds=b; }catch(e){}
+    acService.getPlacePredictions(acReq,function(preds,status){
+      acResults=(status===google.maps.places.PlacesServiceStatus.OK&&preds)?preds.map(function(pr){ var catId=autoCategoryGoogle(pr.types); var sf=pr.structured_formatting||{};
         return {name:sf.main_text||pr.description,address:sf.secondary_text||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.description)};
-      })); }); }
+      }):[]; maybeDone(); });
+    var tsReq={query:q}; try{ var b2=googleMap.getBounds(); if(b2){ tsReq.location=b2.getCenter(); tsReq.radius=30000; } }catch(e){}
+    placesService.textSearch(tsReq,function(results,status){
+      tsResults=(status===google.maps.places.PlacesServiceStatus.OK&&results)?results.map(function(pr){ var catId=autoCategoryGoogle(pr.types);
+        return {name:pr.name,address:pr.formatted_address||pr.vicinity||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.name)};
+      }):[]; maybeDone(); }); }
 };
 function refetchAll(){ if(ui.engine!=="google"||!placesService){ toast("Connect Google first"); return; }
   var todo=state.places.filter(function(p){return p.placeId;}); if(!todo.length){ toast("No Google places to refresh"); return; }
