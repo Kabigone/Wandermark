@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.52
+  VERSION: 0.9.53
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.53 Found the real cause of kanji search-to-add not finding places
+           like 永吉: the search box required at least 3 characters
+           before searching at all, but 2-character kanji place names are
+           common in Japanese. Short CJK queries (kana/kanji) now only
+           need 1 character.
     0.9.52 Fixed the icon picker showing the same emoji twice in search
            results when the official Unicode name and a travel synonym
            pointed to the same emoji with/without a variation selector
@@ -666,7 +671,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.52";
+var WANDERMARK_VERSION="0.9.53";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1549,7 +1554,12 @@ function isAlreadyOnMap(it){
   return false; }
 function hideResults(){ resultsEl.classList.remove("on"); resultsEl.innerHTML=""; }
 function showResultsMsg(m){ resultsEl.innerHTML='<div class="res note">'+esc(m)+"</div>"; resultsEl.classList.add("on"); }
-var doSearch=debounce(function(q){ if(!q||q.length<3){ hideResults(); return; } if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
+/* CJK characters are information-dense — a 1-2 character kanji query can
+   fully name a place, unlike Latin script where 1-2 letters are rarely
+   useful. Use a lower minimum length for queries containing CJK so short
+   kanji/kana place names (e.g. "永吉") aren't rejected before searching. */
+function isCJKQuery(q){ return /[぀-ヿ㐀-鿿豈-﫿]/.test(q); }
+var doSearch=debounce(function(q){ if(!q||q.length<(isCJKQuery(q)?1:3)){ hideResults(); return; } if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
   showResultsMsg("Searching…");
   Engine.suggest(q,function(items){ if(items===null){ showResultsMsg("Search is offline here. Click the map to drop a pin by hand."); return; }
     if(!items.length){ showResultsMsg("No matches near here. Try a broader term, or pan the map closer."); return; }
@@ -2189,7 +2199,7 @@ function wireUI(){
   var vt=document.getElementById("verTag"); if(vt) vt.textContent="Wandermark v"+WANDERMARK_VERSION;
   document.getElementById("gateConnect").onclick=authGateConnect;
   document.getElementById("search").addEventListener("input",function(e){ doSearch(e.target.value.trim()); });
-  document.getElementById("search").addEventListener("focus",function(e){ if(e.target.value.trim().length>=3) doSearch(e.target.value.trim()); });
+  document.getElementById("search").addEventListener("focus",function(e){ var v=e.target.value.trim(); if(v.length>=(isCJKQuery(v)?1:3)) doSearch(v); });
   document.addEventListener("click",function(e){ if(!e.target.closest(".search-wrap")) hideResults(); });
 
   document.getElementById("filterToggle").onclick=function(){ document.getElementById("filterSec").classList.toggle("collapsed"); };
