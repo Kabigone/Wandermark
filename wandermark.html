@@ -3,10 +3,18 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.44
+  VERSION: 0.9.45
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.45 Fixed the mobile header: the "Wandermark" title no longer eats
+           the row the map-name button and ⋯ menu share (just the compass
+           glyph remains on small screens). Google search-to-add now falls
+           back to a text search when autocomplete comes back empty —
+           autocomplete sometimes misses exact-name matches (e.g. some
+           Japanese place names typed in kanji) that Maps' own search box
+           finds fine. Search results that match a place already on the
+           active map are now flagged "✓ On this map".
     0.9.44 Fixed a data-loss bug: edits (like adding a place) were only
            written to storage on a 300ms debounce, so backgrounding or
            closing the tab right after an edit (common on mobile) could
@@ -318,6 +326,7 @@
   .res .rn{font-weight:600;font-size:14px}
   .res .ra{font-size:12px;color:var(--muted);margin-top:1px}
   .res .badge{margin-left:auto;font-size:11px;color:var(--teal-ink);background:rgba(44,114,108,.12);padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:600}
+  .res .badge.onmap{margin-left:0;background:var(--teal);color:#fff}
   .res.note{color:var(--muted);font-size:13px;cursor:default}
   .res.note:hover{background:none}
 
@@ -490,6 +499,11 @@
   .mobile-toggle{display:inline-flex}
   @media (max-width:820px),(hover:none) and (pointer:coarse){
     header{flex-wrap:wrap;gap:9px}
+    /* "Wandermark" text would otherwise share the first row with the
+       map-name button, leaving no room for it and pushing the ⋯ menu
+       (and then the search bar) onto rows of their own. Drop the text
+       and keep just the compass glyph. */
+    .brand h1{display:none}
     /* The map-name button shares a row with the ⋯ menu and grows to fill it,
        wrapping long names onto a second line instead of truncating them. */
     #mapBtn{max-width:none;flex:1 1 auto;min-width:0;order:1;white-space:normal;overflow:visible;text-overflow:clip;text-align:left}
@@ -611,7 +625,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.44";
+var WANDERMARK_VERSION="0.9.45";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -929,7 +943,7 @@ var LeafletEngine={
         var name=(r.namedetails&&r.namedetails.name)?r.namedetails.name:(r.display_name||"").split(",")[0];
         var addr=(r.display_name||"").split(",").slice(1,4).join(",").trim();
         var hours=(r.extratags&&r.extratags.opening_hours)||""; var web=(r.extratags&&(r.extratags.website||r.extratags["contact:website"]))||"";
-        return {name:name,address:addr,catId:catId,resolve:function(done){ done({name:name,address:addr,lat:+r.lat,lng:+r.lon,categoryId:catId,hours:hours,hoursByDay:null,website:web,photoUrl:"",googleUrl:"",placeId:""}); }};
+        return {name:name,address:addr,catId:catId,lat:+r.lat,lng:+r.lon,resolve:function(done){ done({name:name,address:addr,lat:+r.lat,lng:+r.lon,categoryId:catId,hours:hours,hoursByDay:null,website:web,photoUrl:"",googleUrl:"",placeId:""}); }};
       })); }).catch(function(){ cb(null); }); }
 };
 
@@ -978,12 +992,23 @@ var GoogleEngine={
   panTo:function(loc){ if(googleMap) googleMap.panTo({lat:loc.lat,lng:loc.lng}); },
   resize:function(){},
   geocode:function(addr,cb){ if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
-  suggest:function(q,cb){ if(!acService){ cb([]); return; } var req={input:q}; try{ var b=googleMap.getBounds(); if(b) req.bounds=b; }catch(e){}
-    acService.getPlacePredictions(req,function(preds,status){ if(status!==google.maps.places.PlacesServiceStatus.OK||!preds){ cb([]); return; }
+  suggest:function(q,cb){ if(!acService||!placesService){ cb([]); return; }
+    function fromDetails(placeId,fallbackName){ return function(done){ placesService.getDetails({placeId:placeId,fields:GET_FIELDS},function(d,st){
+      if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ done(null); return; } done(placeFromDetails(d,fallbackName,placeId)); }); }; }
+    /* Autocomplete is tuned for "predictions as you type" and can miss exact-name
+       matches that the regular Google Maps search box finds fine (notably some
+       Japanese place names typed in kanji). If it comes back empty, fall back to
+       a text search — closer to what Maps' own search box does. */
+    function textSearchFallback(){ var req={query:q}; try{ var b=googleMap.getBounds(); if(b){ req.location=b.getCenter(); req.radius=30000; } }catch(e){}
+      placesService.textSearch(req,function(results,status){ if(status!==google.maps.places.PlacesServiceStatus.OK||!results){ cb([]); return; }
+        cb(results.map(function(pr){ var catId=autoCategoryGoogle(pr.types);
+          return {name:pr.name,address:pr.formatted_address||pr.vicinity||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.name)};
+        })); }); }
+    var req={input:q}; try{ var b=googleMap.getBounds(); if(b) req.bounds=b; }catch(e){}
+    acService.getPlacePredictions(req,function(preds,status){
+      if(status!==google.maps.places.PlacesServiceStatus.OK||!preds||!preds.length){ textSearchFallback(); return; }
       cb(preds.map(function(pr){ var catId=autoCategoryGoogle(pr.types); var sf=pr.structured_formatting||{};
-        return {name:sf.main_text||pr.description,address:sf.secondary_text||"",catId:catId,resolve:function(done){
-          placesService.getDetails({placeId:pr.place_id,fields:GET_FIELDS},function(d,st){
-            if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ done(null); return; } done(placeFromDetails(d,pr.description,pr.place_id)); }); }};
+        return {name:sf.main_text||pr.description,address:sf.secondary_text||"",catId:catId,placeId:pr.place_id,resolve:fromDetails(pr.place_id,pr.description)};
       })); }); }
 };
 function refetchAll(){ if(ui.engine!=="google"||!placesService){ toast("Connect Google first"); return; }
@@ -1055,6 +1080,14 @@ function addPlace(o){ var p=normalizePlace(o); state.places.push(p); markDirty()
 
 /* ===================== search ===================== */
 var resultsEl=document.getElementById("results");
+/* Flag search results that match a place already on the active map, so
+   "add a place" search doesn't tempt people into adding duplicates. Google
+   results are matched by placeId; OSM results (no stable id pre-resolve) by
+   coordinates within ~30m. */
+function isAlreadyOnMap(it){
+  if(it.placeId) return state.places.some(function(p){ return p.placeId&&p.placeId===it.placeId; });
+  if(typeof it.lat==="number"&&typeof it.lng==="number") return state.places.some(function(p){ return Math.abs(p.lat-it.lat)<0.0003&&Math.abs(p.lng-it.lng)<0.0003; });
+  return false; }
 function hideResults(){ resultsEl.classList.remove("on"); resultsEl.innerHTML=""; }
 function showResultsMsg(m){ resultsEl.innerHTML='<div class="res note">'+esc(m)+"</div>"; resultsEl.classList.add("on"); }
 var doSearch=debounce(function(q){ if(!q||q.length<3){ hideResults(); return; } if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
@@ -1062,8 +1095,8 @@ var doSearch=debounce(function(q){ if(!q||q.length<3){ hideResults(); return; } 
   Engine.suggest(q,function(items){ if(items===null){ showResultsMsg("Search is offline here. Click the map to drop a pin by hand."); return; }
     if(!items.length){ showResultsMsg("No matches near here. Try a broader term, or pan the map closer."); return; }
     resultsEl.innerHTML="";
-    items.forEach(function(it){ var c=catById(it.catId)||catById("other"); var d=document.createElement("div"); d.className="res";
-      d.innerHTML='<span class="rt">'+(c?c.emoji:"📍")+'</span><div style="flex:1;min-width:0"><div class="rn">'+esc(it.name)+'</div><div class="ra">'+esc(it.address)+'</div></div><span class="badge">'+esc(c?c.name:"Other")+"</span>";
+    items.forEach(function(it){ var c=catById(it.catId)||catById("other"); var onMap=isAlreadyOnMap(it); var d=document.createElement("div"); d.className="res";
+      d.innerHTML='<span class="rt">'+(c?c.emoji:"📍")+'</span><div style="flex:1;min-width:0"><div class="rn">'+esc(it.name)+(onMap?' <span class="badge onmap">✓ On this map</span>':"")+'</div><div class="ra">'+esc(it.address)+'</div></div><span class="badge">'+esc(c?c.name:"Other")+"</span>";
       d.onclick=function(){ showResultsMsg("Adding…"); it.resolve(function(place){ if(!place){ toast("Couldn’t load that place"); hideResults(); return; } addPlace(place); document.getElementById("search").value=""; hideResults(); }); };
       resultsEl.appendChild(d); }); }); },420);
 
