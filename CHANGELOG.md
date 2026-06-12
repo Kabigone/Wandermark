@@ -10,6 +10,14 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.49] — More emoji names for icon search
+
+### Added
+- Expanded the icon picker's name→emoji lookup with more activity, people,
+  and weather terms (e.g. "run"/"running", "levitating man", "climbing",
+  "cycling", "selfie", "rain", "shrug") so more searches by name find a
+  match instead of falling back to the default quick-pick grid.
+
 ## [0.9.48] — Emoji name search, fix double-tap dialog popup
 
 ### Added

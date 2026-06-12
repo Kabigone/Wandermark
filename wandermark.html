@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.48
+  VERSION: 0.9.49
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.49 Expanded the icon picker's emoji name search to cover more
+           activity/people/weather terms (e.g. "run", "levitating man",
+           "climbing", "selfie", "rain").
     0.9.48 The icon picker's text field now also matches by emoji name
            (e.g. typing "owl" finds 🦉), not just pasted emoji. Map
            pan/zoom (mouse drag or pinch/scroll, on either map engine) now
@@ -652,7 +655,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.48";
+var WANDERMARK_VERSION="0.9.49";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -725,7 +728,18 @@ var EMOJI_NAMES={
   "bath":"🛁","sauna":"🧖","hot springs":"♨️","onsen":"♨️","sleeping":"😴","bed":"🛏️",
   "books":"📚","newspaper":"📰","mailbox":"📮","key":"🔑","lock":"🔒","light bulb":"💡",
   "fire":"🔥","droplet":"💧","wave":"🌊","leaf":"🍃","four leaf clover":"🍀","maple leaf":"🍁","fallen leaf":"🍂",
-  "pin":"📍","round pushpin":"📍","location":"📍","flag":"🚩","checkered flag":"🏁","globe":"🌍"
+  "pin":"📍","round pushpin":"📍","location":"📍","flag":"🚩","checkered flag":"🏁","globe":"🌍",
+  "running":"🏃","run":"🏃","jogging":"🏃","person running":"🏃","walking":"🚶","person walking":"🚶",
+  "hiking":"🥾","levitating man":"🕴️","man in suit levitating":"🕴️","business man":"🕴️",
+  "dancer":"💃","dancing":"💃","dance":"🕺","man dancing":"🕺",
+  "climbing":"🧗","rock climbing":"🧗","fishing":"🎣","fishing pole":"🎣","juggling":"🤹",
+  "weight lifting":"🏋️","gym":"🏋️","workout":"🏋️","cycling":"🚴","biking":"🚴","bike":"🚴",
+  "mountain biking":"🚵","horse racing":"🏇","kayak":"🛶","canoe":"🛶","rowing":"🚣",
+  "snorkel":"🤿","diving":"🤿","parachute":"🪂","skydiving":"🪂","selfie":"🤳",
+  "raised hands":"🙌","clapping":"👏","thumbs up":"👍","thumbs down":"👎","ok hand":"👌",
+  "waving hand":"👋","wave hand":"👋","point":"👉","shrug":"🤷",
+  "rain":"🌧️","rainy":"🌧️","cloud":"☁️","cloudy":"☁️","thunderstorm":"⛈️","tornado":"🌪️",
+  "fog":"🌫️","wind":"🌬️","hot":"🥵","cold":"🥶"
 };
 /* GENRE_ICONS: maps the human-readable genre labels from GENRE_LABELS
    (set on places looked up via Google Places) to a more specific icon than
