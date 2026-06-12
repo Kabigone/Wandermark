@@ -3,10 +3,19 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.42
+  VERSION: 0.9.43
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.43 Default categories are no longer "baked in" to each map: a
+           built-in category (Eat, Coffee, etc.) keeps following the
+           app's defaults until you edit it via ⋯ → Categories, at which
+           point your name/icon/color choices are frozen for that map.
+           Places can now also have their own icon, separate from their
+           category's — set per-place in its popup (🍕 for a pizza
+           place, 🍣 for sushi, etc.), with an "Automatic" option that
+           picks a more specific icon based on the place's genre when
+           known (from Google Places), falling back to the category icon.
     0.9.42 Tapping the map to drop a pin (or add a POI) no longer fires
            instantly on the first tap of a double-tap — there's now a
            ~300ms window where a second tap/click cancels it, so
@@ -596,7 +605,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.42";
+var WANDERMARK_VERSION="0.9.43";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -615,12 +624,35 @@ var CONFIG={
 /* ===================== constants ===================== */
 var PALETTE=["#e0533d","#e08a2f","#d4a72c","#4c9a5a","#2f8f86","#3d7bd1","#5a5fd1","#9a52c8","#d14f93","#6b7280","#9a6b45","#1f5650"];
 var EMOJIS=["🍴","🍜","☕️","🥐","🍷","🏨","⛩️","🏛️","🛍️","🌳","🍣","🍱","🍦","🍺","🎑","📸","🎨","🚶","🏖️","🗼","🚉","💴","🧋","🍵","⭐️"];
+/* PLACE_ICONS: choices for per-place icon overrides — a generic category icon
+   (above) is the fallback, but individual places can pick something more
+   specific so the map is easier to scan at a glance. */
+var PLACE_ICONS=["🍕","🍣","🍜","🍔","🌮","🥗","🍰","🥐","☕️","🍺","🍷","🍸","🥩","🦞","🥪","🍦","🥟","🍱","🏨","🛍️","🎨","🌳","📸","⛩️","🏛️","🚉","🍴"];
+/* GENRE_ICONS: maps the human-readable genre labels from GENRE_LABELS
+   (set on places looked up via Google Places) to a more specific icon than
+   their category's. Only used when a place has no explicit icon of its own. */
+var GENRE_ICONS={Pizza:"🍕",Sushi:"🍣",Ramen:"🍜",Burgers:"🍔",Mexican:"🌮",Sandwiches:"🥪",Bagels:"🥯",
+  "Ice cream":"🍦",Desserts:"🍰",Bakery:"🥐",Café:"☕️",Coffee:"☕️","Cocktail bar":"🍸","Wine bar":"🍷",
+  Bar:"🍺",Pub:"🍺",Nightclub:"🎶",Hotel:"🏨",Museum:"🏛️","Art gallery":"🎨",Park:"🌳",Attraction:"📸",
+  Seafood:"🦞",Steakhouse:"🥩","Fast food":"🍔",Japanese:"🍣",Italian:"🍝",Indian:"🍛",Thai:"🍜",
+  Vietnamese:"🍜",Chinese:"🥟",Korean:"🍲",French:"🥖",Greek:"🥙","Middle Eastern":"🥙",
+  Mediterranean:"🥙",American:"🍔",Spanish:"🥘",Deli:"🥪",Breakfast:"🥞",Brunch:"🥞",
+  Vegetarian:"🥗",Vegan:"🥗"};
 var DEFAULT_CATS=[
   {id:"eat",name:"Eat",color:"#e0533d",emoji:"🍴"},{id:"coffee",name:"Coffee",color:"#9a6b45",emoji:"☕️"},
   {id:"bakery",name:"Bakery",color:"#e08a2f",emoji:"🥐"},{id:"drinks",name:"Drinks",color:"#9a52c8",emoji:"🍷"},
   {id:"stay",name:"Stay",color:"#3d7bd1",emoji:"🏨"},{id:"see",name:"See",color:"#2f8f86",emoji:"⛩️"},
   {id:"shop",name:"Shop",color:"#d14f93",emoji:"🛍️"},{id:"other",name:"Other",color:"#6b7280",emoji:"📍"}];
-function freshCats(){ return DEFAULT_CATS.map(function(c){return {id:c.id,name:c.name,color:c.color,emoji:c.emoji};}); }
+var DEFAULT_CATS_BY_ID={}; DEFAULT_CATS.forEach(function(c){ DEFAULT_CATS_BY_ID[c.id]=c; });
+/* New maps store custom:false for the built-in categories, so catById() keeps
+   resolving their name/color/emoji from the live DEFAULT_CATS above — i.e.
+   changing a default here updates every map that hasn't customized that
+   category. Editing a category (editCategoryModal) sets custom:true, which
+   freezes that category's name/color/emoji as stored on the map. Maps saved
+   before this existed have no `custom` field, so they're treated the same as
+   custom:false (their built-in categories track future default changes too,
+   unless/until edited). */
+function freshCats(){ return DEFAULT_CATS.map(function(c){return {id:c.id,name:c.name,color:c.color,emoji:c.emoji,custom:false};}); }
 var DEF={lat:35.6762,lng:139.6503,z:12};
 var DAYNAME={monday:"Mo",tuesday:"Tu",wednesday:"We",thursday:"Th",friday:"Fr",saturday:"Sa",sunday:"Su"};
 var DOWCODES=["Su","Mo","Tu","We","Th","Fr","Sa"];
@@ -660,7 +692,7 @@ function createMapFromData(o){ var id=uid(); LIB.maps[id]={id:id,name:o.name||"I
    handles every state gracefully: publishes if ready, prompts sign-in if
    needed, or asks you to connect a Drive folder if there isn't one yet. */
 function publishNewMap(id){ var m=LIB.maps[id]; if(m&&!m.driveId) driveSaveMap(m,null,{}); }
-function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",
+function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",icon:p.icon||"",
   notes:p.notes||"",hours:p.hours||"",hoursByDay:p.hoursByDay||null,website:p.website||"",photoUrl:p.photoUrl||"",googleUrl:p.googleUrl||"",placeId:p.placeId||"",
   rating:(typeof p.rating==="number")?p.rating:null,priceLevel:(typeof p.priceLevel==="number")?p.priceLevel:null,genre:p.genre||"",
   tags:normalizeTags(p.tags),createdAt:p.createdAt||Date.now()}; }
@@ -669,7 +701,11 @@ function normalizeTags(t){ if(Array.isArray(t)) return t.map(function(x){return 
 function renderMapBtn(){ var b=document.getElementById("mapBtn"); var ic=!state.mine?"☁️":(state.kind==="curated"?"⭐":"🧳"); b.innerHTML=ic+" "+esc(state.name)+" ▾"; }
 
 /* ===================== helpers ===================== */
-function catById(id){ for(var i=0;i<state.categories.length;i++) if(state.categories[i].id===id) return state.categories[i]; return state.categories[state.categories.length-1]; }
+function catRaw(id){ for(var i=0;i<state.categories.length;i++) if(state.categories[i].id===id) return state.categories[i]; return state.categories[state.categories.length-1]; }
+function catById(id){ var c=catRaw(id); var d=DEFAULT_CATS_BY_ID[c.id];
+  if(d&&!c.custom) return {id:c.id,name:d.name,color:d.color,emoji:d.emoji};
+  return c; }
+function placeIcon(p){ return p.icon||GENRE_ICONS[p.genre]||catById(p.categoryId).emoji; }
 function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
 function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
   s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
@@ -801,7 +837,7 @@ function metaLineHtml(p){ var bits=[];
 function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   var st=statusNow(p),nowtag = st===true?'<span class="nowtag o">Open now</span>':(st===false?'<span class="nowtag c">Closed now</span>':"");
   var node=document.createElement("div"); node.className="pop";
-  var catOpts=state.categories.map(function(k){return '<option value="'+k.id+'"'+(k.id===p.categoryId?" selected":"")+'>'+k.emoji+" "+esc(k.name)+"</option>";}).join("");
+  var catOpts=state.categories.map(function(k){ var kk=catById(k.id); return '<option value="'+k.id+'"'+(k.id===p.categoryId?" selected":"")+'>'+kk.emoji+" "+esc(kk.name)+"</option>";}).join("");
   var links='<div class="plinks">'+(p.website?'<a target="_blank" rel="noopener" href="'+esc(p.website)+'">🌐 Website</a>':"")+
     '<a target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">🍽 Tabelog</a>'+
     '<a target="_blank" rel="noopener" href="'+igUrl(p)+'">📷 Instagram</a></div>';
@@ -812,6 +848,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     hoursBlockHtml(p)+links+
     (editable?
       '<select class="ppcat">'+catOpts+"</select>"+
+      '<label style="font-size:11px;color:var(--muted);display:block;margin:6px 0 2px">Icon</label><div class="em-pick ppicon"></div>'+
       '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
       '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
@@ -820,10 +857,21 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
       (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":"")+
       '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a></div>');
+  var chosenIcon={v:p.icon||""};
+  if(editable){
+    var pi=node.querySelector(".ppicon"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
+    var ab=document.createElement("button"); ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
+    ab.onclick=function(){ chosenIcon.v=""; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); ab.classList.add("sel"); };
+    pi.appendChild(ab);
+    (chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0?[chosenIcon.v].concat(PLACE_ICONS):PLACE_ICONS).forEach(function(em){
+      var b=document.createElement("button"); b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
+      b.onclick=function(){ chosenIcon.v=em; pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); };
+      pi.appendChild(b); });
+  }
   if(opts.add){
-    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
+    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
   } else if(editable){
-    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
+    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
     node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
   }
   return node; }
@@ -846,7 +894,7 @@ var LeafletEngine={
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
   refresh:function(list){ leafletLayer.clearLayers(); markers={};
     list.forEach(function(p){ var c=catById(p.categoryId);
-      var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div class="mk-pin" style="--c:'+c.color+'"><span>'+c.emoji+"</span></div>",iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
+      var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div class="mk-pin" style="--c:'+c.color+'"><span>'+placeIcon(p)+"</span></div>",iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
       mk.bindPopup(function(){ return makePopupNode(p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[p.id]=mk; });
     if(leafletRef){ leafletMap.removeLayer(leafletRef); leafletRef=null; }
     var a=getAnchor(); if(a) leafletRef=L.marker([a.lat,a.lng],{icon:L.divIcon({className:"",html:'<div class="mk-ref"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:-100}).addTo(leafletMap); },
@@ -904,7 +952,7 @@ var GoogleEngine={
   getCenter:function(){ return googleMap.getCenter().toJSON(); },
   refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
     list.forEach(function(p){ var c=catById(p.categoryId);
-      var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color),label:{text:c.emoji,fontSize:"15px"},title:p.name||""});
+      var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color),label:{text:placeIcon(p),fontSize:"15px"},title:p.name||""});
       mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk; });
     if(gRef){ gRef.setMap(null); gRef=null; }
     var a=getAnchor(); if(a) gRef=new google.maps.Marker({position:{lat:a.lat,lng:a.lng},map:googleMap,zIndex:-100,icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2c726c",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
@@ -1026,7 +1074,7 @@ function renderTagFilter(){ var tags=allTags(),wrap=document.getElementById("tag
     d.onclick=function(){ if(on) delete ui.activeTags[t]; else ui.activeTags[t]=true; renderAll(); }; el.appendChild(d); }); }
 function updateFilterBadge(){ var n=activeFilterCount(),b=document.getElementById("fbadge"); if(n){ b.style.display=""; b.textContent=n; } else b.style.display="none"; }
 function renderCatChips(){ var el=document.getElementById("catChips"); el.innerHTML="";
-  state.categories.forEach(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length; var active=ui.activeCats[c.id]!==false;
+  state.categories.forEach(function(cRaw){ var c=catById(cRaw.id); var n=state.places.filter(function(p){return p.categoryId===cRaw.id;}).length; var active=ui.activeCats[cRaw.id]!==false;
     var d=document.createElement("div"); d.className="chip"+(active?"":" off");
     d.innerHTML='<span class="dot" style="background:'+c.color+'"></span>'+esc(c.name)+' <span class="ct">'+n+"</span>";
     d.onclick=function(){ ui.activeCats[c.id]=!active; renderAll(); }; el.appendChild(d); }); }
@@ -1050,8 +1098,8 @@ function renderPlaces(){ var list=getFiltered();
     var price=priceLevelStr(p); if(price) meta+='<span class="price">'+price+"</span>";
     if(p._d!=null) meta+='<span class="km">'+p._d.toFixed(p._d<10?1:0)+" km</span>";
     var st=statusNow(p); if(st===true) meta+='<span class="open">● Open</span>'; else if(st===false) meta+='<span class="closed">● Closed</span>';
-    var pem = p.photoUrl ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+c.emoji+"</span></div>"
-                         : '<div class="pem" style="background:'+c.color+'">'+c.emoji+"</div>";
+    var pem = p.photoUrl ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+placeIcon(p)+"</span></div>"
+                         : '<div class="pem" style="background:'+c.color+'">'+placeIcon(p)+"</div>";
     var div=document.createElement("div"); div.className="place";
     div.innerHTML=pem+'<div><div class="pn">'+esc(p.name||"(unnamed)")+'</div><div class="pmeta">'+meta+"</div></div>";
     div.onclick=function(){ if(ui.view!=="map") setView("map"); if(ui.mapReady) Engine.open(p); closeSidebarMobile(); };
@@ -1095,7 +1143,7 @@ function poiModal(placeId,lat,lng){ if(ui.readOnly) return;
 function pinNameModal(lat,lng){ if(ui.readOnly||scrim.classList.contains("on")) return;
   openModal('<div class="mh"><div><h2>Drop a pin</h2><p>'+lat.toFixed(4)+", "+lng.toFixed(4)+'</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="field"><label>Name</label><input id="pinName" placeholder="What’s here?"></div>'+
-    '<div class="field"><label>Category</label><select id="pinCat">'+state.categories.map(function(k){return '<option value="'+k.id+'">'+k.emoji+" "+esc(k.name)+"</option>";}).join("")+"</select></div>"+
+    '<div class="field"><label>Category</label><select id="pinCat">'+state.categories.map(function(k){ var kk=catById(k.id); return '<option value="'+k.id+'">'+kk.emoji+" "+esc(kk.name)+"</option>";}).join("")+"</select></div>"+
     '<button class="pillbtn" id="pinAdd">＋ Add pin</button></div>');
   modal.querySelector(".close").onclick=closeModal; var inp=modal.querySelector("#pinName"); inp.focus();
   function go(){ addPlace({name:inp.value.trim()||"Pinned spot",lat:lat,lng:lng,categoryId:modal.querySelector("#pinCat").value}); closeModal(); }
@@ -1433,8 +1481,8 @@ function driveModal(){ var d=appSettings.drive||{folderId:"",folderName:"",key:"
   var off=modal.querySelector("#dOff"); if(off) off.onclick=function(){ appSettings.drive={folderId:"",folderName:"",key:"",clientId:"",auto:false}; driveToken=""; driveTokenExp=0; clearDriveToken(); save(); closeModal(); updateSigninBadge(); toast("Drive disconnected (synced maps kept)"); }; }
 
 function categoryModal(){ var editable=!ui.readOnly;
-  var rows=state.categories.map(function(c){ var n=state.places.filter(function(p){return p.categoryId===c.id;}).length;
-    return '<div class="catrow"'+(editable?' data-edit="'+c.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"':' style="border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"')+'><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span>'+(editable?'<span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span>':"")+'</div>'; }).join("");
+  var rows=state.categories.map(function(cRaw){ var c=catById(cRaw.id); var n=state.places.filter(function(p){return p.categoryId===cRaw.id;}).length;
+    return '<div class="catrow"'+(editable?' data-edit="'+cRaw.id+'" style="cursor:pointer;border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"':' style="border:1px solid var(--line);background:#fffdf6;margin-bottom:6px"')+'><span class="em">'+c.emoji+'</span><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+c.color+'"></span><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span class="cnt" style="font-size:11px;color:var(--muted)">'+n+' places</span>'+(editable?'<span class="mact" style="font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid var(--line-2);border-radius:7px">Edit ›</span>':"")+'</div>'; }).join("");
   openModal('<div class="mh"><div><h2>Categories</h2><p>'+(editable?"For the current map. Tap a category to rename, recolor, merge, or delete it.":"For the current map. (Read-only — sign in to edit.)")+'</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div>'+rows+'</div>'+(editable?
     '<div class="divlbl"><span class="ln"></span>Add a category<span class="ln"></span></div>'+
@@ -1450,9 +1498,9 @@ function categoryModal(){ var editable=!ui.readOnly;
   modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); renderAll(); categoryModal(); toast("Category added"); };
   modal.querySelectorAll("[data-edit]").forEach(function(row){ row.onclick=function(){ editCategoryModal(row.getAttribute("data-edit")); }; }); }
 
-function editCategoryModal(id){ if(ui.readOnly) return; var c=catById(id);
+function editCategoryModal(id){ if(ui.readOnly) return; var raw=catRaw(id), c=catById(id);
   var others=state.categories.filter(function(x){return x.id!==id;});
-  var mergeOpts='<option value="">— pick a category —</option>'+others.map(function(o){return '<option value="'+o.id+'">'+o.emoji+" "+esc(o.name)+"</option>";}).join("");
+  var mergeOpts='<option value="">— pick a category —</option>'+others.map(function(oRaw){ var o=catById(oRaw.id); return '<option value="'+oRaw.id+'">'+o.emoji+" "+esc(o.name)+"</option>";}).join("");
   openModal('<div class="mh"><div><h2>Edit category</h2><p>Rename, restyle, or fold this category into another.</p></div><button class="close">✕</button></div>'+
     '<div class="mb"><div class="field"><label>Name</label><input id="ecName" value="'+esc(c.name)+'"></div>'+
     '<div class="field"><label>Icon</label><div class="em-pick" id="ecEmoji"></div></div>'+
@@ -1467,7 +1515,7 @@ function editCategoryModal(id){ if(ui.readOnly) return; var c=catById(id);
   (EMOJIS.indexOf(c.emoji)<0?[c.emoji].concat(EMOJIS):EMOJIS).forEach(function(em){ var b=document.createElement("button"); b.textContent=em; if(em===c.emoji)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
   var pc=modal.querySelector("#ecColor"),chosenC={v:c.color};
   (PALETTE.indexOf(c.color)<0?[c.color].concat(PALETTE):PALETTE).forEach(function(col){ var b=document.createElement("button"); b.style.background=col; if(col===c.color)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
-  modal.querySelector("#ecSave").onclick=function(){ c.name=modal.querySelector("#ecName").value.trim()||c.name; c.emoji=chosenE.v; c.color=chosenC.v; renderAll(); categoryModal(); toast("Category updated"); };
+  modal.querySelector("#ecSave").onclick=function(){ raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; renderAll(); categoryModal(); toast("Category updated"); };
   modal.querySelector("#ecMergeBtn").onclick=function(){ var tid=modal.querySelector("#ecMerge").value; if(!tid){ toast("Pick a category to merge into"); return; } if(state.categories.length<=1){ toast("Keep at least one category"); return; }
     var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=tid; });
     state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast("Merged "+moved+" place(s) into "+catById(tid).name); };
