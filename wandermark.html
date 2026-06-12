@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.43
+  VERSION: 0.9.44
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.44 Fixed a data-loss bug: edits (like adding a place) were only
+           written to storage on a 300ms debounce, so backgrounding or
+           closing the tab right after an edit (common on mobile) could
+           drop it. Now flushed immediately when the tab is hidden/closed,
+           and a pending Drive auto-push is also kicked off right away in
+           that case instead of waiting out its 12s timer.
     0.9.43 Default categories are no longer "baked in" to each map: a
            built-in category (Eat, Coffee, etc.) keeps following the
            app's defaults until you edit it via ⋯ → Categories, at which
@@ -605,7 +611,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.43";
+var WANDERMARK_VERSION="0.9.44";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -675,7 +681,15 @@ var Store={
   set:function(k,v){ if(hasWinStore()){ try{ window.storage.set(k,v,false); }catch(e){} return; } try{ if(window.localStorage) localStorage.setItem(k,v); }catch(e){} }
 };
 var saveTimer=null;
-function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(function(){ Store.set(STORE_KEY, JSON.stringify({v:2,settings:appSettings,lib:{activeId:LIB.activeId,order:LIB.order,maps:LIB.maps}})); },300); }
+function writeStore(){ Store.set(STORE_KEY, JSON.stringify({v:2,settings:appSettings,lib:{activeId:LIB.activeId,order:LIB.order,maps:LIB.maps}})); }
+function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(function(){ saveTimer=null; writeStore(); },300); }
+/* The 300ms debounce above can lose a just-added place if the tab is
+   backgrounded or closed before it fires (common on mobile when switching
+   apps right after adding a pin). Flush immediately whenever the page is
+   hidden or unloaded so localStorage always has the latest state. */
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; writeStore(); } }
+document.addEventListener("visibilitychange",function(){ if(document.hidden) flushSave(); });
+window.addEventListener("pagehide",flushSave);
 
 /* ===================== maps (multi-map library) ===================== */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
@@ -1373,14 +1387,20 @@ function nudgeSignIn(map){ var now=Date.now();
 function nudgeNoFolder(map){ var now=Date.now();
   if(map._lastNoFolderNudge&&now-map._lastNoFolderNudge<600000) return; map._lastNoFolderNudge=now;
   toast("Heads up — “"+map.name+"” isn’t saved anywhere yet, so it only exists in this browser. Open 🗂️ Map ▾ to connect a Drive folder."); }
+function runAutoPush(map){ if(!map||!map.dirty) return;
+  var d=appSettings.drive||{}; if(!d.clientId) return;
+  if(!d.folderId){ nudgeNoFolder(map); return; }
+  if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
+  trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else nudgeSignIn(map); }); }
 function scheduleAutoPush(map){ if(!map) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
-  autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; if(!map.dirty) return;
-    var d=appSettings.drive||{}; if(!d.clientId) return;
-    if(!d.folderId){ nudgeNoFolder(map); return; }
-    if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
-    trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else nudgeSignIn(map); });
-  },12000); }
+  autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; runAutoPush(map); },12000); }
+/* If the tab is hidden/closed before the 12s auto-push timer fires, give
+   dirty maps an immediate best-effort push so edits made right before
+   backgrounding aren't stuck waiting on a timer that may never run again. */
+function flushAutoPush(){ Object.keys(autoPushTimers).forEach(function(id){ clearTimeout(autoPushTimers[id]); delete autoPushTimers[id]; var m=LIB.maps[id]; if(m) runAutoPush(m); }); }
+document.addEventListener("visibilitychange",function(){ if(document.hidden) flushAutoPush(); });
+window.addEventListener("pagehide",flushAutoPush);
 
 /* Every map needs somewhere to live — if there's no Drive folder connected
    yet, ask for one right here instead of leaving the map stuck unsaved in

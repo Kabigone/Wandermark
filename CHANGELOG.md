@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.44] — Fix lost edits on backgrounded/closed tabs
+
+### Fixed
+- `save()` debounced writes to storage by 300ms. If the tab was hidden or
+  closed within that window (e.g. switching apps right after adding a place
+  on mobile), the edit was never written and appeared lost on next launch.
+  The pending write is now flushed immediately on `visibilitychange`
+  (hidden) and `pagehide`.
+- Similarly, a dirty map's auto-push to Drive waited up to 12s before
+  starting. That pending push is now also kicked off immediately when the
+  tab is hidden/closed, instead of potentially never running.
+
 ## [0.9.43] — Live default categories, per-place icons
 
 ### Changed
