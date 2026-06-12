@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.47
+  VERSION: 0.9.48
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.48 The icon picker's text field now also matches by emoji name
+           (e.g. typing "owl" finds 🦉), not just pasted emoji. Map
+           pan/zoom (mouse drag or pinch/scroll, on either map engine) now
+           cancels a pending tap-to-add dialog, fixing double-tap-to-zoom
+           on Google Maps popping up the "add place" dialog afterwards.
     0.9.47 The per-place icon picker now also has a text field for typing
            or pasting any Unicode emoji, not just the curated quick-pick
            list (which still sits below it for one-tap choices). Also: when
@@ -647,7 +652,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.47";
+var WANDERMARK_VERSION="0.9.48";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -670,6 +675,58 @@ var EMOJIS=["🍴","🍜","☕️","🥐","🍷","🏨","⛩️","🏛️","🛍
    (above) is the fallback, but individual places can pick something more
    specific so the map is easier to scan at a glance. */
 var PLACE_ICONS=["🍕","🍣","🍜","🍔","🌮","🥗","🍰","🥐","☕️","🍺","🍷","🍸","🥩","🦞","🥪","🍦","🥟","🍱","🏨","🛍️","🎨","🌳","📸","⛩️","🏛️","🚉","🍴"];
+/* EMOJI_NAMES: a curated name→emoji lookup so the icon picker's text field
+   can search by (official-ish) emoji name, not just accept a pasted emoji.
+   Not exhaustive — focused on food/drink/places/travel/nature/activities,
+   the kinds of icons useful on a travel map. */
+var EMOJI_NAMES={
+  "pizza":"🍕","sushi":"🍣","ramen":"🍜","noodles":"🍜","steaming bowl":"🍜","burger":"🍔","hamburger":"🍔",
+  "taco":"🌮","burrito":"🌯","salad":"🥗","green salad":"🥗","cake":"🍰","shortcake":"🍰","birthday cake":"🎂",
+  "croissant":"🥐","bread":"🍞","baguette":"🥖","pretzel":"🥨","bagel":"🥯","pancakes":"🥞","waffle":"🧇",
+  "cheese":"🧀","egg":"🥚","fried egg":"🍳","bacon":"🥓","steak":"🥩","meat":"🥩","poultry leg":"🍗","chicken":"🍗",
+  "shrimp":"🍤","lobster":"🦞","crab":"🦀","squid":"🦑","octopus":"🐙","fish":"🐟","oyster":"🦪",
+  "dumpling":"🥟","gyoza":"🥟","spaghetti":"🍝","pasta":"🍝","curry":"🍛","rice":"🍚","rice ball":"🍙","onigiri":"🍙",
+  "bento":"🍱","sushi box":"🍱","fries":"🍟","french fries":"🍟","hot dog":"🌭","sandwich":"🥪","wrap":"🌯",
+  "popcorn":"🍿","pretzel stick":"🥨","soup":"🍲","stew":"🍲","fondue":"🫕","tamale":"🫔","falafel":"🧆",
+  "ice cream":"🍦","soft serve":"🍦","gelato":"🍨","shaved ice":"🍧","donut":"🍩","doughnut":"🍩","cookie":"🍪",
+  "chocolate":"🍫","candy":"🍬","lollipop":"🍭","custard":"🍮","pudding":"🍮","honey":"🍯","macaron":"🥮",
+  "pie":"🥧","fruit":"🍎","apple":"🍎","green apple":"🍏","pear":"🍐","orange":"🍊","tangerine":"🍊",
+  "lemon":"🍋","banana":"🍌","watermelon":"🍉","grapes":"🍇","strawberry":"🍓","blueberries":"🫐",
+  "melon":"🍈","cherries":"🍒","peach":"🍑","mango":"🥭","pineapple":"🍍","coconut":"🥥","kiwi":"🥝",
+  "avocado":"🥑","tomato":"🍅","eggplant":"🍆","carrot":"🥕","corn":"🌽","potato":"🥔","sweet potato":"🍠",
+  "broccoli":"🥦","mushroom":"🍄","peanuts":"🥜","chestnut":"🌰","garlic":"🧄","onion":"🧅",
+  "coffee":"☕️","tea":"🍵","matcha":"🍵","bubble tea":"🧋","sake":"🍶","beer":"🍺","beers":"🍻","clinking beer mugs":"🍻",
+  "wine":"🍷","wine glass":"🍷","cocktail":"🍸","tropical drink":"🍹","champagne":"🍾","whisky":"🥃","tumbler":"🥃",
+  "milk":"🥛","baby bottle":"🍼","juice":"🧃","mate":"🧉","ice":"🧊","cup":"🥤","soda":"🥤",
+  "hotel":"🏨","love hotel":"🏩","house":"🏠","building":"🏢","office":"🏢","convenience store":"🏪",
+  "department store":"🏬","factory":"🏭","japanese castle":"🏯","castle":"🏰","stadium":"🏟️","amphitheater":"🏛️",
+  "museum":"🏛️","temple":"⛩️","shrine":"⛩️","church":"⛪","mosque":"🕌","synagogue":"🕍","hindu temple":"🛕",
+  "shopping bags":"🛍️","shopping":"🛍️","market":"🏬","bank":"🏦","hospital":"🏥","school":"🏫",
+  "park":"🌳","tree":"🌳","evergreen tree":"🌲","palm tree":"🌴","cactus":"🌵","seedling":"🌱","herb":"🌿",
+  "flower":"🌸","cherry blossom":"🌸","tulip":"🌷","rose":"🌹","sunflower":"🌻","hibiscus":"🌺",
+  "mountain":"⛰️","mount fuji":"🗻","volcano":"🌋","camping":"🏕️","tent":"⛺","beach":"🏖️","beach with umbrella":"🏖️",
+  "desert":"🏜️","island":"🏝️","national park":"🏞️","sunrise":"🌅","sunset":"🌇","sunrise over mountains":"🌄",
+  "night with stars":"🌃","city":"🏙️","cityscape":"🏙️","bridge":"🌉","fountain":"⛲","ferris wheel":"🎡",
+  "roller coaster":"🎢","carousel":"🎠","tokyo tower":"🗼","statue of liberty":"🗽",
+  "train":"🚆","bullet train":"🚄","train car":"🚃","metro":"🚇","tram":"🚊","bus":"🚌","taxi":"🚕",
+  "car":"🚗","airplane":"✈️","helicopter":"🚁","boat":"⛵","sailboat":"⛵","ferry":"⛴️","cruise ship":"🚢",
+  "bicycle":"🚲","scooter":"🛴","motor scooter":"🛵","walking":"🚶","hiking":"🥾","boots":"🥾",
+  "luggage":"🧳","passport":"📓","map":"🗺️","world map":"🗺️","compass":"🧭","camera":"📸","camera with flash":"📸",
+  "ticket":"🎫","admission tickets":"🎟️","star":"⭐️","sparkles":"✨","fireworks":"🎆","sparkler":"🎇",
+  "moon":"🌙","crescent moon":"🌙","sun":"☀️","rainbow":"🌈","umbrella":"☂️","snowflake":"❄️",
+  "music":"🎵","guitar":"🎸","microphone":"🎤","game":"🎮","video game":"🎮","dice":"🎲","art":"🎨",
+  "palette":"🎨","theater":"🎭","performing arts":"🎭","movie":"🎬","clapper board":"🎬",
+  "yen":"💴","money":"💴","dollar":"💵","credit card":"💳","gift":"🎁","balloon":"🎈",
+  "dog":"🐶","cat":"🐱","panda":"🐼","koala":"🐨","tiger":"🐯","lion":"🦁","bear":"🐻",
+  "rabbit":"🐰","fox":"🦊","deer":"🦌","horse":"🐴","cow":"🐮","pig":"🐷","monkey":"🐵",
+  "penguin":"🐧","bird":"🐦","owl":"🦉","butterfly":"🦋","fish bowl":"🐠","whale":"🐳","turtle":"🐢",
+  "soccer":"⚽","basketball":"🏀","baseball":"⚾","tennis":"🎾","golf":"⛳","ski":"🎿","snowboard":"🏂",
+  "swim":"🏊","surfing":"🏄","skateboard":"🛹","bowling":"🎳","yoga":"🧘","spa":"🧖",
+  "bath":"🛁","sauna":"🧖","hot springs":"♨️","onsen":"♨️","sleeping":"😴","bed":"🛏️",
+  "books":"📚","newspaper":"📰","mailbox":"📮","key":"🔑","lock":"🔒","light bulb":"💡",
+  "fire":"🔥","droplet":"💧","wave":"🌊","leaf":"🍃","four leaf clover":"🍀","maple leaf":"🍁","fallen leaf":"🍂",
+  "pin":"📍","round pushpin":"📍","location":"📍","flag":"🚩","checkered flag":"🏁","globe":"🌍"
+};
 /* GENRE_ICONS: maps the human-readable genre labels from GENRE_LABELS
    (set on places looked up via Google Places) to a more specific icon than
    their category's. Only used when a place has no explicit icon of its own. */
@@ -913,19 +970,28 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     function syncIconBtn(){ iconBtn.textContent=chosenIcon.v||autoIcon; iconBtn.title=chosenIcon.v?"Place icon (tap to change)":"Place icon: Automatic "+autoIcon+" (tap to change)"; }
     function clearIconSel(){ pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); }
     function pickIcon(em,btn){ chosenIcon.v=em; clearIconSel(); if(btn) btn.classList.add("sel"); customInp.value=(em&&PLACE_ICONS.indexOf(em)<0)?em:""; syncIconBtn(); pi.style.display="none"; }
+    function isEmojiLike(s){ return /[\u{1F000}-\u{1FFFF}\u{2190}-\u{2BFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u.test(s); }
+    function renderIconGrid(list){
+      pi.querySelectorAll("button.emo").forEach(function(b){b.remove();});
+      list.forEach(function(em){
+        var b=document.createElement("button"); b.type="button"; b.className="emo"; b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
+        b.onclick=function(){ pickIcon(em,b); };
+        pi.appendChild(b); }); }
     syncIconBtn();
     iconBtn.onclick=function(){ pi.style.display=(pi.style.display==="none")?"flex":"none"; };
-    var customInp=document.createElement("input"); customInp.type="text"; customInp.className="ppiconcustom"; customInp.placeholder="Or type/paste any emoji…"; customInp.maxLength=8;
+    var customInp=document.createElement("input"); customInp.type="text"; customInp.className="ppiconcustom"; customInp.placeholder="Search by name, or paste any emoji…"; customInp.maxLength=24;
     if(chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0) customInp.value=chosenIcon.v;
-    customInp.addEventListener("input",function(){ var v=customInp.value.trim(); chosenIcon.v=v; clearIconSel(); if(!v) ab.classList.add("sel"); syncIconBtn(); });
+    customInp.addEventListener("input",function(){ var v=customInp.value.trim();
+      if(!v){ chosenIcon.v=""; clearIconSel(); ab.classList.add("sel"); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
+      if(isEmojiLike(v)){ chosenIcon.v=v; clearIconSel(); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
+      var q=v.toLowerCase(), matches=[];
+      Object.keys(EMOJI_NAMES).forEach(function(name){ if(name.indexOf(q)>=0&&matches.indexOf(EMOJI_NAMES[name])<0) matches.push(EMOJI_NAMES[name]); });
+      renderIconGrid(matches.length?matches:PLACE_ICONS); });
     pi.appendChild(customInp);
     var ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
     ab.onclick=function(){ pickIcon("",ab); };
     pi.appendChild(ab);
-    PLACE_ICONS.forEach(function(em){
-      var b=document.createElement("button"); b.type="button"; b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
-      b.onclick=function(){ pickIcon(em,b); };
-      pi.appendChild(b); });
+    renderIconGrid(chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0?[chosenIcon.v].concat(PLACE_ICONS):PLACE_ICONS);
   }
   if(opts.add){
     node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
@@ -948,7 +1014,9 @@ var LeafletEngine={
       if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; return; }
       var lat=e.latlng.lat,lng=e.latlng.lng;
       leafletClickTimer=setTimeout(function(){ leafletClickTimer=null; pinNameModal(lat,lng); },300); });
-    leafletMap.on("dblclick",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } }); },
+    leafletMap.on("dblclick",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } });
+    leafletMap.on("dragstart",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } });
+    leafletMap.on("zoomstart",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } }); },
   setView:function(v){ if(leafletMap) leafletMap.setView([v.lat,v.lng],v.z||12); },
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
   refresh:function(list){ leafletLayer.clearLayers(); markers={};
@@ -1006,7 +1074,9 @@ var GoogleEngine={
       if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; return; }
       var pid=e.placeId, lat=e.latLng.lat(), lng=e.latLng.lng();
       gClickTimer=setTimeout(function(){ gClickTimer=null; if(pid) poiModal(pid,lat,lng); else pinNameModal(lat,lng); },300); });
-    googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } }); },
+    googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
+    googleMap.addListener("dragstart",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
+    googleMap.addListener("zoom_changed",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } }); },
   setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
   getCenter:function(){ return googleMap.getCenter().toJSON(); },
   refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
