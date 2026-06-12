@@ -10,6 +10,26 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.45] — Mobile header fix, Google search fallback, "already on map" hint
+
+### Fixed
+- Mobile header: the "Wandermark" title text shared the first row with the
+  map-name button, leaving no room for it and pushing the ⋯ menu and then
+  the search bar each onto their own row. The title text is now hidden on
+  small screens (just the 🧭 glyph remains), so the map name and ⋯ menu fit
+  on one row again.
+- Google "search to add" (`GoogleEngine.suggest`) now falls back to
+  `PlacesService.textSearch` when `AutocompleteService` returns no
+  predictions. Autocomplete is tuned for as-you-type predictions and can
+  miss exact-name matches (reported: searching a place's kanji name found
+  nothing, but its hiragana reading did) that the regular Maps search box
+  finds.
+
+### Added
+- Search-to-add results that match a place already on the active map are
+  now flagged with a "✓ On this map" badge (matched by Google `placeId`, or
+  by coordinates for OSM results) to reduce accidental duplicates.
+
 ## [0.9.44] — Fix lost edits on backgrounded/closed tabs
 
 ### Fixed
