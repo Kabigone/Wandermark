@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.50] — Icon search against official Unicode emoji names
+
+### Changed
+- The icon picker's name search is now backed by a generated table of the
+  official Unicode character names (~1,850 entries, covering the main
+  emoji blocks), so far more searches find a match — e.g. "lev" finds
+  🕴 (MAN IN BUSINESS SUIT LEVITATING), "run" finds 🏃 (RUNNER). A smaller
+  set of everyday/travel synonyms (ramen, onigiri, matcha, etc., which
+  aren't official Unicode names) is layered on top. Results are capped
+  at 60 matches.
+
 ## [0.9.49] — More emoji names for icon search
 
 ### Added
