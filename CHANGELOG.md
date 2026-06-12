@@ -10,6 +10,32 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.43] — Live default categories, per-place icons
+
+### Changed
+- **Built-in categories (Eat, Coffee, Bakery, Drinks, Stay, See, Shop,
+  Other) are no longer frozen into each map at creation time.** A map's
+  "Eat" category now keeps tracking the app's current default name,
+  icon, and color — so a future change to the defaults (like 0.9.42's
+  🍴 swap) reaches every map that hasn't customized that category.
+  As soon as you edit a category via ⋯ → Categories → tap it → Save,
+  that category's name/icon/color are frozen to your choices for that
+  map and stop tracking future default changes. Custom categories you've
+  added are unaffected either way.
+  - Maps saved before this version have no record of which built-in
+    categories were customized, so they're treated as not-yet-customized
+    and will pick up live defaults until edited.
+
+### Added
+- **Per-place icons.** Each place's popup now has an "Icon" picker
+  (below the category dropdown) with an "✨ Automatic" option plus a set
+  of more specific icons (🍕 🍣 🍜 🍔 🌮 🍰 🍷 🥩 🦞 etc.). "Automatic"
+  uses a more specific icon based on the place's genre when known (e.g.
+  🍕 for a pizza restaurant, 🍣 for sushi) — set when looking up a place
+  via Google — and otherwise falls back to the category's icon. Picking
+  an icon overrides this for that place on the map marker and in the
+  sidebar list.
+
 ## [0.9.42] — Don't eat the first tap of a double-tap, generic "Eat" icon
 
 ### Fixed
