@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.53] — Fix kanji search-to-add requiring 3+ characters
+
+### Fixed
+- **Found the actual cause of 永吉 (and other short kanji place names)
+  not appearing in "search to add"**: the search box ignored any query
+  shorter than 3 characters, so a 2-character kanji name never even
+  triggered a search. 2-character kanji place names are common and
+  often fully specific in Japanese (unlike 2-letter Latin queries).
+  Queries containing kana/kanji now only need 1 character before
+  searching. The earlier `language:"ja"` override (0.9.47) and merged
+  text-search (0.9.46) were both correct but never got a chance to run
+  for this query.
+
 ## [0.9.52] — Fix duplicate emoji in icon search results
 
 ### Fixed
