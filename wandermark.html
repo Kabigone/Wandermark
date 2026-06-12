@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.50
+  VERSION: 0.9.51
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.51 Fixed the mobile header again: the "Sign in to Google" badge
+           (shown only when signed out) now gets its own row instead of
+           crowding the row with the map-name button and ⋯ menu.
     0.9.50 Icon picker name search now matches against the official
            Unicode emoji names (~1,850 entries, generated from
            unicodedata), plus a smaller set of everyday/travel synonyms —
@@ -541,7 +544,7 @@
     /* The map-name button shares a row with the ⋯ menu and grows to fill it,
        wrapping long names onto a second line instead of truncating them. */
     #mapBtn{max-width:none;flex:1 1 auto;min-width:0;order:1;white-space:normal;overflow:visible;text-overflow:clip;text-align:left}
-    #signinBadge{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+    #signinBadge{max-width:none;flex:1 1 100%;order:3;overflow:hidden;text-overflow:ellipsis;text-align:center}
     /* Force the search bar onto its own full-width row — at common phone widths
        (~390-430px) it would otherwise sit alongside the map-name button and the
        sign-in badge and get flex-shrunk down to a bare unusable icon. */
@@ -659,7 +662,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.50";
+var WANDERMARK_VERSION="0.9.51";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
