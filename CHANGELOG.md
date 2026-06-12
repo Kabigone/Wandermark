@@ -10,6 +10,14 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.51] — Fix mobile header overflow when signed out
+
+### Fixed
+- On phones, the "🔑 Sign in to Google" badge (shown only when signed
+  out) was sharing the header's first row with the map-name button and
+  ⋯ menu, overflowing it and pushing the layout from 0.9.45's mobile
+  header fix out of place. The badge now gets its own full-width row.
+
 ## [0.9.50] — Icon search against official Unicode emoji names
 
 ### Changed
