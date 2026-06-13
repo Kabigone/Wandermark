@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.55
+  VERSION: 0.9.56
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.56 Category icon pickers (Categories ▸ Add/Edit) now use the same
+           searchable picker as per-place icons: search by name (e.g.
+           "torii", "ramen") or paste any emoji, with a scrollable grid.
+           Factored the picker into a shared buildIconPicker() helper used
+           by both the place popup and the category modals.
     0.9.55 Place popups now have two small icon buttons (🗺️ open in Google
            Maps, 🧭 directions from your location) right at the top, next
            to the category badge — no more scrolling down to the bottom
@@ -480,7 +485,6 @@
   .pop .pprow .ppcat{flex:1}
   .pop .ppiconbtn{flex:0 0 auto;margin-top:5px;font-size:17px;padding:5px 10px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;cursor:pointer;line-height:1.4}
   .pop .ppicon{max-height:120px;overflow-y:auto}
-  .pop .ppicon input.ppiconcustom{flex:1 1 100%;width:100%;margin:0 0 4px;order:-1}
   .chip.sel{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
 
   #tableView{position:absolute;inset:0;background:var(--paper);z-index:400;display:none;flex-direction:column}
@@ -523,6 +527,8 @@
   .modal textarea{width:100%;min-height:96px;border-radius:10px;border:1px solid var(--line-2);background:#fffdf6;padding:10px;font-family:"JetBrains Mono",monospace;font-size:12px;resize:vertical}
   .modal .field input,.modal .field select{width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--line-2);background:#fffdf6}
   .em-pick,.col-pick{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .em-pick{max-height:160px;overflow-y:auto}
+  .em-pick input.ppiconcustom{flex:1 1 100%;width:100%;margin:0 0 4px;order:-1}
   .em-pick button{font-size:18px;padding:5px;border-radius:8px;border:1px solid transparent}
   .em-pick button:hover{background:#f0e8d2}
   .em-pick button.sel{border-color:var(--teal);background:rgba(44,114,108,.12)}
@@ -684,7 +690,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.55";
+var WANDERMARK_VERSION="0.9.56";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1091,6 +1097,41 @@ var EMOJI_SYNONYMS={
 var EMOJI_NAMES={};
 (function(){ for(var k in EMOJI_UNICODE_NAMES) EMOJI_NAMES[k]=EMOJI_UNICODE_NAMES[k];
   for(var k2 in EMOJI_SYNONYMS) EMOJI_NAMES[k2]=EMOJI_SYNONYMS[k2]; })();
+function isEmojiLike(s){ return /[\u{1F000}-\u{1FFFF}\u{2190}-\u{2BFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u.test(s); }
+/* Shared icon picker UI: a search box (matches EMOJI_NAMES or accepts a
+   pasted emoji directly) plus a scrollable grid of emoji buttons. Used by
+   the per-place icon picker and the category icon pickers.
+   current: {v:emoji} ref that gets mutated as the user picks/types.
+   defaultList: emoji shown before/after a search. onChange(emoji) fires on
+   every value change; opts.showAuto/autoIcon add a "✨ Automatic" button;
+   opts.onPick fires only when the user explicitly picks a grid/auto button. */
+function buildIconPicker(container,current,defaultList,onChange,opts){
+  opts=opts||{};
+  function clearSel(){ container.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); }
+  function renderGrid(list){
+    container.querySelectorAll("button.emo").forEach(function(b){b.remove();});
+    list.forEach(function(em){
+      var b=document.createElement("button"); b.type="button"; b.className="emo"; b.textContent=em; if(em===current.v) b.classList.add("sel");
+      b.onclick=function(){ pick(em,b); };
+      container.appendChild(b); }); }
+  function pick(em,btn){ current.v=em; clearSel(); if(btn) btn.classList.add("sel"); customInp.value=(em&&defaultList.indexOf(em)<0)?em:""; onChange(em); if(opts.onPick) opts.onPick(); }
+  var customInp=document.createElement("input"); customInp.type="text"; customInp.className="ppiconcustom"; customInp.placeholder=opts.placeholder||"Search by name, or paste any emoji…"; customInp.maxLength=24;
+  if(current.v&&defaultList.indexOf(current.v)<0) customInp.value=current.v;
+  customInp.addEventListener("input",function(){ var v=customInp.value.trim();
+    if(!v){ if(opts.showAuto){ current.v=""; clearSel(); ab.classList.add("sel"); onChange(""); } renderGrid(defaultList); return; }
+    if(isEmojiLike(v)){ current.v=v; clearSel(); onChange(v); renderGrid(defaultList); return; }
+    var q=v.toLowerCase(), matches=[], seen={};
+    Object.keys(EMOJI_NAMES).forEach(function(name){ if(name.indexOf(q)<0) return; var em=EMOJI_NAMES[name], key=em.replace(/️/g,""); if(seen[key]) return; seen[key]=true; matches.push(em); });
+    renderGrid(matches.length?matches.slice(0,60):defaultList); });
+  container.appendChild(customInp);
+  var ab;
+  if(opts.showAuto){
+    ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+opts.autoIcon+")"; if(!current.v) ab.classList.add("sel");
+    ab.onclick=function(){ pick("",ab); };
+    container.appendChild(ab);
+  }
+  renderGrid(current.v&&defaultList.indexOf(current.v)<0?[current.v].concat(defaultList):defaultList);
+}
 /* GENRE_ICONS: maps the human-readable genre labels from GENRE_LABELS
    (set on places looked up via Google Places) to a more specific icon than
    their category's. Only used when a place has no explicit icon of its own. */
@@ -1337,30 +1378,9 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   if(editable){
     var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
     function syncIconBtn(){ iconBtn.textContent=chosenIcon.v||autoIcon; iconBtn.title=chosenIcon.v?"Place icon (tap to change)":"Place icon: Automatic "+autoIcon+" (tap to change)"; }
-    function clearIconSel(){ pi.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); }
-    function pickIcon(em,btn){ chosenIcon.v=em; clearIconSel(); if(btn) btn.classList.add("sel"); customInp.value=(em&&PLACE_ICONS.indexOf(em)<0)?em:""; syncIconBtn(); pi.style.display="none"; }
-    function isEmojiLike(s){ return /[\u{1F000}-\u{1FFFF}\u{2190}-\u{2BFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u.test(s); }
-    function renderIconGrid(list){
-      pi.querySelectorAll("button.emo").forEach(function(b){b.remove();});
-      list.forEach(function(em){
-        var b=document.createElement("button"); b.type="button"; b.className="emo"; b.textContent=em; if(em===chosenIcon.v) b.classList.add("sel");
-        b.onclick=function(){ pickIcon(em,b); };
-        pi.appendChild(b); }); }
     syncIconBtn();
     iconBtn.onclick=function(){ pi.style.display=(pi.style.display==="none")?"flex":"none"; };
-    var customInp=document.createElement("input"); customInp.type="text"; customInp.className="ppiconcustom"; customInp.placeholder="Search by name, or paste any emoji…"; customInp.maxLength=24;
-    if(chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0) customInp.value=chosenIcon.v;
-    customInp.addEventListener("input",function(){ var v=customInp.value.trim();
-      if(!v){ chosenIcon.v=""; clearIconSel(); ab.classList.add("sel"); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
-      if(isEmojiLike(v)){ chosenIcon.v=v; clearIconSel(); syncIconBtn(); renderIconGrid(PLACE_ICONS); return; }
-      var q=v.toLowerCase(), matches=[], seen={};
-      Object.keys(EMOJI_NAMES).forEach(function(name){ if(name.indexOf(q)<0) return; var em=EMOJI_NAMES[name], key=em.replace(/️/g,""); if(seen[key]) return; seen[key]=true; matches.push(em); });
-      renderIconGrid(matches.length?matches.slice(0,60):PLACE_ICONS); });
-    pi.appendChild(customInp);
-    var ab=document.createElement("button"); ab.type="button"; ab.textContent="✨"; ab.title="Automatic ("+autoIcon+")"; if(!chosenIcon.v) ab.classList.add("sel");
-    ab.onclick=function(){ pickIcon("",ab); };
-    pi.appendChild(ab);
-    renderIconGrid(chosenIcon.v&&PLACE_ICONS.indexOf(chosenIcon.v)<0?[chosenIcon.v].concat(PLACE_ICONS):PLACE_ICONS);
+    buildIconPicker(pi,chosenIcon,PLACE_ICONS,syncIconBtn,{showAuto:true,autoIcon:autoIcon,onPick:function(){ pi.style.display="none"; }});
   }
   if(opts.add){
     node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
@@ -2046,7 +2066,7 @@ function categoryModal(){ var editable=!ui.readOnly;
   modal.querySelector(".close").onclick=closeModal;
   if(!editable) return;
   var pe=modal.querySelector("#ncEmoji"),chosenE={v:EMOJIS[0]};
-  EMOJIS.forEach(function(em,i){ var b=document.createElement("button"); b.textContent=em; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
+  buildIconPicker(pe,chosenE,EMOJIS,function(){});
   var pc=modal.querySelector("#ncColor"),chosenC={v:PALETTE[0]};
   PALETTE.forEach(function(col,i){ var b=document.createElement("button"); b.style.background=col; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
   modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); renderAll(); categoryModal(); toast("Category added"); };
@@ -2066,7 +2086,7 @@ function editCategoryModal(id){ if(ui.readOnly) return; var raw=catRaw(id), c=ca
     '<button class="pillbtn" id="ecDel" style="background:#9a3322">Delete (move places to “Other”)</button></div>');
   modal.querySelector(".close").onclick=function(){ categoryModal(); };
   var pe=modal.querySelector("#ecEmoji"),chosenE={v:c.emoji};
-  (EMOJIS.indexOf(c.emoji)<0?[c.emoji].concat(EMOJIS):EMOJIS).forEach(function(em){ var b=document.createElement("button"); b.textContent=em; if(em===c.emoji)b.classList.add("sel"); b.onclick=function(){ chosenE.v=em; pe.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pe.appendChild(b); });
+  buildIconPicker(pe,chosenE,EMOJIS,function(){});
   var pc=modal.querySelector("#ecColor"),chosenC={v:c.color};
   (PALETTE.indexOf(c.color)<0?[c.color].concat(PALETTE):PALETTE).forEach(function(col){ var b=document.createElement("button"); b.style.background=col; if(col===c.color)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
   modal.querySelector("#ecSave").onclick=function(){ raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; renderAll(); categoryModal(); toast("Category updated"); };
