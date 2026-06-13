@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.56] — Unified, searchable category icon picker
+
+### Changed
+- The category icon pickers (Categories ▸ Add a category, and Edit category)
+  now use the same searchable picker as the per-place icon picker: type to
+  search emoji by name (e.g. "torii", "ramen", "shrine"), or paste any emoji
+  directly, with a scrollable grid of results.
+- Factored the picker UI into a shared `buildIconPicker()` helper, used by
+  both `makePopupNode` (per-place icon) and `categoryModal()` /
+  `editCategoryModal()` (category icon). The "✨ Automatic" option remains
+  place-only, since categories always have an explicit icon.
+
 ## [0.9.55] — Quick map/directions buttons at the top of place popups
 
 ### Added
