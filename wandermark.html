@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.56
+  VERSION: 0.9.57
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.57 The "you are here" dot now tracks your live position (via
+           watchPosition) instead of freezing at one spot. Also made it
+           appear on load whenever location permission is available,
+           rather than only after pressing the locate button.
     0.9.56 Category icon pickers (Categories ▸ Add/Edit) now use the same
            searchable picker as per-place icons: search by name (e.g.
            "torii", "ramen") or paste any emoji, with a scrollable grid.
@@ -690,7 +694,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.56";
+var WANDERMARK_VERSION="0.9.57";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1569,21 +1573,23 @@ function startEngine(kind){ teardownMap();
 function locateMe(){ if(!navigator.geolocation){ toast("Location isn’t available in this browser"); return; }
   toast("Finding your location…");
   navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
-      ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panToZoom(loc,LOCATE_ZOOM); } },
+      ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panToZoom(loc,LOCATE_ZOOM); }
+      startLocationWatch(); },
     function(){ toast("Couldn’t get your location"); },
     {enableHighAccuracy:true,maximumAge:30000,timeout:10000}); }
-/* Quietly show the "you are here" dot on load, without panning/zooming or
-   any toast — mirrors how Google Maps shows your location automatically
-   once you've granted permission. Only runs if permission was already
-   granted previously (checked via the Permissions API where available),
-   so it never pops an unsolicited location prompt on load. */
-function locateMeQuiet(){ if(!navigator.geolocation) return;
-  function go(){ navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+/* Keep the "you are here" dot following your actual position, like Google
+   Maps does, instead of freezing at the spot you happened to be in when
+   the dot first appeared. */
+var locationWatchId=null;
+function startLocationWatch(){ if(!navigator.geolocation||locationWatchId!==null) return;
+  locationWatchId=navigator.geolocation.watchPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
       ui.myLocation=loc; if(ui.mapReady) Engine.showMe(loc); },
-    function(){}, {enableHighAccuracy:false,maximumAge:60000,timeout:8000}); }
-  if(navigator.permissions&&navigator.permissions.query){
-    navigator.permissions.query({name:"geolocation"}).then(function(p){ if(p.state==="granted") go(); }).catch(function(){});
-  } else go(); }
+    function(){}, {enableHighAccuracy:true,maximumAge:30000,timeout:27000}); }
+/* Quietly start the "you are here" dot on load, without panning/zooming or
+   any toast — mirrors how Google Maps shows your location automatically.
+   If location permission hasn't been decided yet, the browser will show its
+   normal one-time prompt; if it's already granted, the dot just appears. */
+function locateMeQuiet(){ startLocationWatch(); }
 function onGkeyRejected(){ gkeyBlocked=true; var ownKey=(gkey&&gkey!==CONFIG.apiKey);
   toast(ownKey?"Google rejected that key — switching to OpenStreetMap. Open 🗂️ Map ▾ → Map style to try a different one.":"Google rejected the shared Maps connection — switching to OpenStreetMap.");
   if(ownKey){ gkey=""; Store.set(GKEY_KEY,""); }
