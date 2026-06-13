@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.57] — Live-tracking location dot
+
+### Changed
+- The "you are here" dot now follows your live position via
+  `navigator.geolocation.watchPosition`, instead of being fixed at the
+  spot you were in when it first appeared. Started both when you tap the
+  locate button and on load.
+- The on-load location dot no longer requires the Permissions API to
+  report `"granted"` first (many browsers default sites to "ask every
+  time", which made the dot never appear automatically). It now just
+  starts watching on load — the browser still shows its normal one-time
+  permission prompt if needed.
+
 ## [0.9.56] — Unified, searchable category icon picker
 
 ### Changed
