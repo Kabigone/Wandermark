@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.54
+  VERSION: 0.9.55
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.55 Place popups now have two small icon buttons (🗺️ open in Google
+           Maps, 🧭 directions from your location) right at the top, next
+           to the category badge — no more scrolling down to the bottom
+           of the popup to open a place in Maps. Removed the old "↗
+           Google Maps" button from the bottom of the popup.
     0.9.54 The "My location" button now zooms in to a set level (like
            Google Maps' own locate button), instead of only panning at
            the current zoom. The "you are here" dot also now shows
@@ -449,7 +454,11 @@
   .pop .pmetaline .rating{color:#b8860b;font-weight:700}
   .pop .pmetaline .price{color:var(--muted);font-weight:600}
   .pop .pa{font-size:12px;color:var(--muted);margin-bottom:6px}
-  .pop .pcat{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff;margin-bottom:6px}
+  .pop .ptop{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap}
+  .pop .pcat{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff;margin-bottom:0}
+  .pop .ptop-acts{display:flex;gap:6px;margin-left:auto}
+  .pop .ticon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;border-radius:50%;border:1px solid var(--line-2);background:#fffdf6;text-decoration:none;font-size:14px;line-height:1}
+  .pop .ticon:hover{background:#f1e9d4}
   .pop .nowtag{font-size:11px;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:20px}
   .pop .nowtag.o{background:rgba(47,106,58,.16);color:var(--open)}
   .pop .nowtag.c{background:rgba(154,51,34,.16);color:var(--closed)}
@@ -465,7 +474,6 @@
   .plinks a:hover{background:#f1e9d4}
   .pop .pacts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
   .pop .pacts a,.pop .pacts button{font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--line-2);background:#fffdf6;text-decoration:none;color:var(--ink)}
-  .pop .pacts .gm{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
   .pop .pacts .ppdel{color:var(--closed)}
   .pop select,.pop textarea,.pop input{width:100%;margin-top:5px;padding:6px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;font-family:inherit}
   .pop .pprow{display:flex;gap:6px}
@@ -676,7 +684,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.54";
+var WANDERMARK_VERSION="0.9.55";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1177,6 +1185,10 @@ function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*M
 function gmapsUrl(p){ if(p.googleUrl) return p.googleUrl;
   if(p.placeId) return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.name||"")+"&query_place_id="+p.placeId;
   return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((p.name||"")+", "+(p.address||(p.lat+","+p.lng))); }
+/* Directions from the user's current location (omitting "origin" makes Google
+   Maps default to it) to this place. */
+function gmapsDirUrl(p){ var url="https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(p.lat+","+p.lng);
+  if(p.placeId) url+="&destination_place_id="+p.placeId; return url; }
 function tabelogUrl(p){ return "https://tabelog.com/rstLst/?sw="+encodeURIComponent(p.name||""); }
 function igUrl(p){ return "https://www.google.com/search?q="+encodeURIComponent('site:instagram.com "'+(p.name||"")+'"'); }
 function toast(m){ var t=document.getElementById("toast"); t.textContent=m; t.classList.add("on"); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("on");},2700); }
@@ -1306,8 +1318,10 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     '<a target="_blank" rel="noopener" href="'+tabelogUrl(p)+'">🍽 Tabelog</a>'+
     '<a target="_blank" rel="noopener" href="'+igUrl(p)+'">📷 Instagram</a></div>';
   var editable=opts.add||!ui.readOnly;
+  var topActs='<div class="ptop-acts"><a class="ticon" target="_blank" rel="noopener" title="Open in Google Maps" href="'+gmapsUrl(p)+'">🗺️</a>'+
+    '<a class="ticon" target="_blank" rel="noopener" title="Directions from your location" href="'+gmapsDirUrl(p)+'">🧭</a></div>';
   node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
-    '<span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+
+    '<div class="ptop"><span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+topActs+"</div>"+
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
     (editable?
@@ -1315,12 +1329,10 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
       '<div class="em-pick ppicon" style="display:none"></div>'+
       '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
       '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
-      '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a>'+
-      (opts.add?'<button class="ppsave">＋ Add</button>':'<button class="ppsave">Save</button><button class="ppdel">Delete</button>')+'</div>'
+      '<div class="pacts">'+(opts.add?'<button class="ppsave">＋ Add</button>':'<button class="ppsave">Save</button><button class="ppdel">Delete</button>')+'</div>'
     :
       (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
-      ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":"")+
-      '<div class="pacts"><a class="gm" target="_blank" rel="noopener" href="'+gmapsUrl(p)+'">↗ Google Maps</a></div>');
+      ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
   var chosenIcon={v:p.icon||""};
   if(editable){
     var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
