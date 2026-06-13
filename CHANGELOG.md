@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.55] — Quick map/directions buttons at the top of place popups
+
+### Added
+- Place popups now have two small round icon buttons next to the category
+  badge, at the top of the popup: 🗺️ opens the place in Google Maps, and
+  🧭 opens turn-by-turn directions from your current location (via Google
+  Maps' directions URL, which defaults to your current location as the
+  origin). Both work the same in read-only ("view this map") popups too.
+
+### Removed
+- The "↗ Google Maps" button at the bottom of the popup — it required
+  scrolling past hours/notes/tags to reach; the new top icons replace it.
+
 ## [0.9.54] — "My location" zooms in, shown automatically when permitted
 
 ### Changed
