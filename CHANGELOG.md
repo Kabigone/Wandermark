@@ -10,6 +10,16 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.58] — Fix broken popup photos from expired Google Places URLs
+
+### Fixed
+- Place popup photos no longer show a broken-image indicator when the
+  stored photo URL has expired (Google Places `getUrl()` returns
+  time-limited signed URLs that stop working after days/weeks). The
+  broken image is hidden immediately, and in Google Maps mode the popup
+  re-fetches a fresh photo URL on the spot — the photo appears a moment
+  later without any user action.
+
 ## [0.9.57] — Live-tracking location dot
 
 ### Changed
