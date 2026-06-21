@@ -10,15 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
-## [0.9.58] — Fix broken popup photos from expired Google Places URLs
+## [0.9.59] — Popup photos now use background-image (silent failure) + proactive refresh
 
 ### Fixed
-- Place popup photos no longer show a broken-image indicator when the
-  stored photo URL has expired (Google Places `getUrl()` returns
-  time-limited signed URLs that stop working after days/weeks). The
-  broken image is hidden immediately, and in Google Maps mode the popup
-  re-fetches a fresh photo URL on the spot — the photo appears a moment
-  later without any user action.
+- Popup photos are now rendered as a CSS `background-image` div (the
+  same technique as the list-view thumbnail) rather than an `<img>` tag.
+  CSS `background-image` fails completely silently when a URL is broken or
+  expired — no broken-image X icon. This fixes the crossed-out photos on
+  shared maps where the stored Google Places photo URLs had expired.
+- In Google Maps mode, each popup open now also proactively fetches a
+  fresh photo URL from Places API (single `fields:["photos"]` request),
+  so the photo slot fills in with a working image even if the stored URL
+  is stale.
+
+## [0.9.58] — (superseded by 0.9.59)
 
 ## [0.9.57] — Live-tracking location dot
 
