@@ -3,14 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.58
+  VERSION: 0.9.59
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
-    0.9.58 Place popup photos no longer show a broken-image icon when
-           the stored Google Places photo URL has expired. The broken
-           photo is hidden, and if the map is in Google Maps mode the
-           fresh URL is fetched on the spot and the photo re-appears.
+    0.9.59 Popup photo now rendered as a CSS background-image div (like
+           the list-view thumbnail), which fails silently instead of
+           showing a broken-image X when the stored Google Places URL
+           has expired. Also proactively refreshes the photo URL from
+           Places API on each popup open in Google Maps mode.
+    0.9.58 (superseded by 0.9.59)
     0.9.57 The "you are here" dot now tracks your live position (via
            watchPosition) instead of freezing at one spot. Also made it
            appear on load whenever location permission is available,
@@ -461,7 +463,7 @@
   .leaflet-popup-content-wrapper{border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
   .leaflet-popup-content{margin:13px 14px;font-family:"Hanken Grotesk",sans-serif}
   .pop{width:252px}
-  .pop-photo img{width:100%;height:118px;object-fit:cover;border-radius:9px;margin-bottom:8px;display:block;background:#e7dcc4}
+  .pop-photo{width:100%;height:118px;background-size:cover;background-position:center;border-radius:9px;margin-bottom:8px}
   .pop h4{font-family:"Fraunces",serif;margin:0 0 2px;font-size:16px;font-weight:700;line-height:1.2}
   .pop .pmetaline{font-size:12px;color:var(--muted);margin-bottom:4px}
   .pop .pmetaline .rating{color:#b8860b;font-weight:700}
@@ -698,7 +700,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.58";
+var WANDERMARK_VERSION="0.9.59";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1369,7 +1371,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   var editable=opts.add||!ui.readOnly;
   var topActs='<div class="ptop-acts"><a class="ticon" target="_blank" rel="noopener" title="Open in Google Maps" href="'+gmapsUrl(p)+'">🗺️</a>'+
     '<a class="ticon" target="_blank" rel="noopener" title="Directions from your location" href="'+gmapsDirUrl(p)+'">🧭</a></div>';
-  node.innerHTML=(p.photoUrl?'<div class="pop-photo"><img src='+JSON.stringify(p.photoUrl)+' alt="" loading="lazy"></div>':"")+
+  node.innerHTML=(p.photoUrl?'<div class="pop-photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"></div>':"")+
     '<div class="ptop"><span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+topActs+"</div>"+
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
@@ -1382,16 +1384,14 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     :
       (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
-  var photoImg=node.querySelector(".pop-photo img");
-  if(photoImg){ photoImg.onerror=function(){
-    this.parentNode.style.display="none";
-    if(ui.engine!=="google"||!placesService||!p.placeId) return;
+  if(ui.engine==="google"&&placesService&&p.placeId){
     placesService.getDetails({placeId:p.placeId,fields:["photos"]},function(d,gst){
       if(gst!==google.maps.places.PlacesServiceStatus.OK||!d||!d.photos||!d.photos.length) return;
-      try{ var url=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); if(!url) return;
-        p.photoUrl=url; var div=node.querySelector(".pop-photo"); if(!div) return;
-        var img2=div.querySelector("img"); img2.src=url; div.style.display=""; }catch(e){}
-    }); }; }
+      try{ var url=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); if(!url||url===p.photoUrl) return;
+        p.photoUrl=url; var div=node.querySelector(".pop-photo");
+        if(div){ div.style.backgroundImage="url("+JSON.stringify(url)+")"; }
+        else{ var nd=document.createElement("div"); nd.className="pop-photo"; nd.style.backgroundImage="url("+JSON.stringify(url)+")";
+          node.insertBefore(nd,node.firstChild); } }catch(e){} }); }
   var chosenIcon={v:p.icon||""};
   if(editable){
     var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
