@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.57
+  VERSION: 0.9.58
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.58 Place popup photos no longer show a broken-image icon when
+           the stored Google Places photo URL has expired. The broken
+           photo is hidden, and if the map is in Google Maps mode the
+           fresh URL is fetched on the spot and the photo re-appears.
     0.9.57 The "you are here" dot now tracks your live position (via
            watchPosition) instead of freezing at one spot. Also made it
            appear on load whenever location permission is available,
@@ -694,7 +698,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.57";
+var WANDERMARK_VERSION="0.9.58";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1378,6 +1382,16 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     :
       (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
+  var photoImg=node.querySelector(".pop-photo img");
+  if(photoImg){ photoImg.onerror=function(){
+    this.parentNode.style.display="none";
+    if(ui.engine!=="google"||!placesService||!p.placeId) return;
+    placesService.getDetails({placeId:p.placeId,fields:["photos"]},function(d,gst){
+      if(gst!==google.maps.places.PlacesServiceStatus.OK||!d||!d.photos||!d.photos.length) return;
+      try{ var url=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); if(!url) return;
+        p.photoUrl=url; var div=node.querySelector(".pop-photo"); if(!div) return;
+        var img2=div.querySelector("img"); img2.src=url; div.style.display=""; }catch(e){}
+    }); }; }
   var chosenIcon={v:p.icon||""};
   if(editable){
     var pi=node.querySelector(".ppicon"), iconBtn=node.querySelector(".ppiconbtn"); var autoIcon=GENRE_ICONS[p.genre]||c.emoji;
