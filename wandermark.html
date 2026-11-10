@@ -3,10 +3,15 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.60
+  VERSION: 0.9.61
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.61 Google sign-in now uses an OAuth redirect flow instead of a popup,
+           fixing sign-in on GitHub Pages where COOP headers block the GIS
+           popup's ability to send the token back to the parent window. Also
+           simplifies silent token refresh (removes the broken prompt:none
+           popup attempt that was already failing per the console log).
     0.9.60 Auth gate is now two-step: after Google sign-in, auto-detects an
            existing Wandermark folder and connects immediately; if none is
            found, shows "browse & pick" and "paste a Drive folder link" options
@@ -716,7 +721,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.60";
+var WANDERMARK_VERSION="0.9.61";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1935,23 +1940,50 @@ function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.dr
   publishAllUnpublished();
   syncDrive({then:function(){ mapsModal(); }}); }
 /* ----- the "sign in + connect a folder before you can do anything" gate ----- */
+/* ----- OAuth redirect flow (replaces GIS popup, which COOP headers on GitHub Pages block) ----- */
+var OAUTH_REDIRECT_KEY="wm:pendingOAuth";
+function startOAuthRedirect(cid){
+  try{ sessionStorage.setItem(OAUTH_REDIRECT_KEY,"1"); }catch(e){}
+  var base=location.href.split("#")[0].split("?")[0];
+  location.href="https://accounts.google.com/o/oauth2/v2/auth"
+    +"?client_id="+encodeURIComponent(cid)
+    +"&scope="+encodeURIComponent("https://www.googleapis.com/auth/drive")
+    +"&response_type=token"
+    +"&redirect_uri="+encodeURIComponent(base)
+    +"&include_granted_scopes=true"
+    +"&prompt=consent"; }
+function handleOAuthRedirectReturn(){
+  var pending; try{ pending=sessionStorage.getItem(OAUTH_REDIRECT_KEY); }catch(e){}
+  var hash=location.hash||"";
+  if(!pending&&!hash.match(/access_token=|[?&]error=/)) return false;
+  try{ sessionStorage.removeItem(OAUTH_REDIRECT_KEY); }catch(e){}
+  if(history.replaceState) history.replaceState(null,"",location.pathname+location.search);
+  var tm=hash.match(/[#&]access_token=([^&]+)/), em=hash.match(/[#&]expires_in=([^&]+)/), errm=hash.match(/[#&]error=([^&]+)/);
+  if(tm){ driveToken=decodeURIComponent(tm[1]); driveTokenExp=Date.now()+((parseInt((em||[])[1])||3000)*1000)-60000;
+    driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); return true; }
+  if(errm) setTimeout(function(){ toast("Google sign-in failed: "+decodeURIComponent(errm[1])); },800);
+  return false; }
+function afterDriveTokenReady(){
+  if(appSettings.drive.folderId){ hideAuthGate(); publishAllUnpublished(); renderAll(); return; }
+  var q=encodeURIComponent("name contains 'wandermark' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  fetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name)")+"&pageSize=10",{headers:{Authorization:"Bearer "+driveToken}})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ var files=(d&&d.files)||[];
+      if(files.length===1){ connectToFolder(files[0].id,files[0].name); hideAuthGate(); return; }
+      document.getElementById("gateStep1").style.display="none";
+      document.getElementById("gateStep2").style.display=""; })
+    .catch(function(){
+      document.getElementById("gateStep1").style.display="none";
+      document.getElementById("gateStep2").style.display=""; }); }
 function showAuthGate(){ var ag=document.getElementById("authGate"); ag.classList.add("on");
   var s1=ag.querySelector("#gateStep1"),s2=ag.querySelector("#gateStep2");
   if(s1) s1.style.display=""; if(s2) s2.style.display="none"; }
 function hideAuthGate(){ document.getElementById("authGate").classList.remove("on"); }
 function authGateConnect(){
-  ensureDriveToken(function(){
-    if(appSettings.drive.folderId){ hideAuthGate(); publishAllUnpublished(); renderAll(); return; }
-    var q=encodeURIComponent("name contains 'wandermark' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-    fetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name)")+"&pageSize=10",{headers:{Authorization:"Bearer "+driveToken}})
-      .then(function(r){ return r.json(); })
-      .then(function(d){ var files=(d&&d.files)||[];
-        if(files.length===1){ connectToFolder(files[0].id,files[0].name); hideAuthGate(); return; }
-        document.getElementById("gateStep1").style.display="none";
-        document.getElementById("gateStep2").style.display=""; })
-      .catch(function(){
-        document.getElementById("gateStep1").style.display="none";
-        document.getElementById("gateStep2").style.display=""; }); }); }
+  var cid=(appSettings.drive&&appSettings.drive.clientId)||"";
+  if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
+  if(driveToken&&Date.now()<driveTokenExp){ afterDriveTokenReady(); return; }
+  startOAuthRedirect(cid); }
 /* Right after sign-in, look for a folder that's obviously "the" Wandermark folder
    (named e.g. "Wandermark" or "Wandermark maps", owned or shared with this account)
    and connect to it straight away — no picker needed unless we can't tell which one. */
@@ -1974,14 +2006,9 @@ function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.
    not possible does it nudge you to sign in by hand (rate-limited so it isn't naggy). The
    manual "Push edits" button keeps working any time and signs you in with the usual prompt. */
 var autoPushTimers={};
-function trySilentDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||"";
-  if(!cid){ cb(false); return; }
+function trySilentDriveToken(cb){
   if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
-  loadGIS(function(){ if(!window.google||!google.accounts||!google.accounts.oauth2){ cb(false); return; }
-    var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); cb(true); } else cb(false); },
-      error_callback:function(){ cb(false); } });
-    client.requestAccessToken({prompt:"none"}); }); }
+  cb(false); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
   toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }
@@ -2341,7 +2368,7 @@ function wireUI(){
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
   document.getElementById("dayFilter").value=todayCode();
 }
-function boot(){ wireUI(); loadDriveToken();
+function boot(){ wireUI(); loadDriveToken(); var oauthReturn=handleOAuthRedirectReturn();
   if(window.innerWidth>=820&&!('ontouchstart' in window)) document.getElementById('aside').classList.add('open');
   Store.get(STORE_KEY).then(function(val){ var ok=false;
     if(val){ try{ var d=JSON.parse(val);
@@ -2363,6 +2390,10 @@ function boot(){ wireUI(); loadDriveToken();
       locateMeQuiet();
       var lp=parseLinkParam();
       if(lp){ loadLinkMap(lp.id,lp.mode); }
+      else if(oauthReturn&&driveToken){
+        /* Just came back from OAuth redirect — token is fresh. Skip straight to folder connection. */
+        if(appSettings.drive.folderId){ publishAllUnpublished(); }
+        else { showAuthGate(); setTimeout(afterDriveTokenReady,80); } }
       else if(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp){ publishAllUnpublished(); }
       else if(appSettings.drive.clientId&&driveEverSignedIn){ trySilentDriveToken(function(ok){ updateSigninBadge();
           if(appSettings.drive.folderId&&ok) publishAllUnpublished(); else showAuthGate(); }); }
