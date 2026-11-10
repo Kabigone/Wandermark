@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.61
+  VERSION: 0.9.62
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.62 "Merge from KML / KMZ into this map" in the ⋯ menu. Parses the
+           file, deduplicates by placeId or name+proximity (<100m), and shows
+           a preview modal listing new places vs. skipped duplicates before
+           committing. Folder layers map to existing categories by name.
     0.9.61 Google sign-in now uses an OAuth redirect flow instead of a popup,
            fixing sign-in on GitHub Pages where COOP headers block the GIS
            popup's ability to send the token back to the parent window. Also
@@ -625,6 +629,7 @@
           <button data-act="expjson"><span class="mi">⬇</span> Export this map (JSON)</button>
           <button data-act="expcsv"><span class="mi">▦</span> Export this map (CSV)</button>
           <button data-act="imp"><span class="mi">⬆</span> Import file (JSON / CSV / KML / KMZ)</button>
+          <button data-act="mergeKml"><span class="mi">🔀</span> Merge from KML / KMZ into this map</button>
           <button data-act="impcode"><span class="mi">🔑</span> Import from code</button>
           <div class="sep"></div>
           <button data-act="addcat"><span class="mi">🏷️</span> Manage categories</button>
@@ -716,12 +721,13 @@
 <div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput" accept=".json,.csv,.kml,.kmz" style="display:none">
+<input type="file" id="mergeInput" accept=".kml,.kmz" style="display:none">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.61";
+var WANDERMARK_VERSION="0.9.62";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2294,6 +2300,56 @@ function importKMLText(text,fname){ var xml; try{ xml=new DOMParser().parseFromS
     places.push({name:nm||"Untitled",address:"",lat:lat,lng:lng,categoryId:ensureCat(folder),notes:desc.slice(0,300),hours:"",website:"",photoUrl:"",googleUrl:"",placeId:""}); }
   if(!places.length){ toast("No pinned points found in that file"); return; }
   createMapFromData({name:mapName,places:places,categories:cats,kind:"personal"}); toast("Imported "+places.length+" places from My Maps"); }
+
+function mergeKMLText(text){
+  var xml; try{ xml=new DOMParser().parseFromString(text,"application/xml"); }catch(e){ toast("Couldn't parse KML"); return; }
+  if(xml.getElementsByTagName("parsererror").length){ toast("That file isn't valid KML"); return; }
+  var pms=xmlEls(xml,"Placemark");
+  var incoming=[];
+  for(var i=0;i<pms.length;i++){
+    var pm=pms[i]; var coordEl=xmlEls(pm,"coordinates")[0]; if(!coordEl) continue;
+    var first=txt(coordEl).split(/\s+/)[0].split(","); var lng2=parseFloat(first[0]),lat2=parseFloat(first[1]); if(isNaN(lat2)||isNaN(lng2)) continue;
+    var nm=txt(xmlEls(pm,"name")[0]); var desc=txt(xmlEls(pm,"description")[0]).replace(/<[^>]+>/g," ").replace(/&[a-z]+;/g," ").replace(/\s+/g," ").trim();
+    var folder=""; var node=pm.parentNode;
+    while(node&&node.nodeType===1){ var ln=(node.localName||node.nodeName||"").toLowerCase(); if(ln==="folder"){ var fn2=xmlEls(node,"name")[0]; if(fn2){ folder=txt(fn2); } break; } node=node.parentNode; }
+    incoming.push({name:nm||"Untitled",address:"",lat:lat2,lng:lng2,_folder:folder,notes:desc.slice(0,300),hours:"",website:"",photoUrl:"",googleUrl:"",placeId:""}); }
+  if(!incoming.length){ toast("No pinned points found in that file"); return; }
+  var newPlaces=[],dupes=[];
+  for(var j=0;j<incoming.length;j++){ var p=incoming[j]; var isDupe=false;
+    for(var k=0;k<state.places.length;k++){ var ex=state.places[k];
+      if(p.placeId&&ex.placeId&&p.placeId===ex.placeId){ isDupe=true; break; }
+      if(p.name&&ex.name&&p.name.toLowerCase()===ex.name.toLowerCase()&&haversine(p,ex)!==null&&haversine(p,ex)<0.1){ isDupe=true; break; } }
+    if(isDupe) dupes.push(p); else newPlaces.push(p); }
+  var dupeHtml="";
+  if(dupes.length){ var shown=dupes.slice(0,8).map(function(d){ return "<li>"+esc(d.name)+"</li>"; }).join("");
+    if(dupes.length>8) shown+="<li style='color:var(--muted)'>…and "+(dupes.length-8)+" more</li>";
+    dupeHtml="<details style='margin:10px 0'><summary style='cursor:pointer;font-size:13px;color:var(--muted)'>"+dupes.length+" already in this map (will be skipped)</summary><ul style='margin:6px 0 0;padding-left:20px;font-size:13px'>"+shown+"</ul></details>"; }
+  var btnHtml=newPlaces.length
+    ? "<button class='pillbtn' id='mergeConfirm' style='background:var(--teal)'>＋ Merge "+newPlaces.length+" new places</button>"
+    : "<button class='pillbtn' disabled style='opacity:.45'>Nothing new to merge</button>";
+  openModal("<div class='mh'><div><h2>Merge from KML / KMZ</h2></div><button class='close'>✕</button></div>"
+    +"<div class='mb'><p>Found <strong>"+incoming.length+"</strong> place"+(incoming.length!==1?"s":"")+": <strong>"+newPlaces.length+"</strong> new"
+    +(dupes.length?" · "+dupes.length+" duplicate"+(dupes.length!==1?"s":"")+" skipped":"")+"."+
+    (newPlaces.length===0?" <em style='color:var(--muted)'>Everything is already in this map.</em>":"")+"</p>"
+    +dupeHtml
+    +"<div style='display:flex;gap:8px;margin-top:14px'>"+btnHtml+"<button class='pillbtn' id='mergeCancelBtn'>Cancel</button></div></div>");
+  document.getElementById("mergeCancelBtn").onclick=closeModal;
+  if(newPlaces.length){ document.getElementById("mergeConfirm").onclick=function(){
+    var catMap={};
+    function getCatId(nm){ if(!nm) return "other"; var key=nm.toLowerCase(); if(catMap[key]) return catMap[key];
+      for(var ci=0;ci<state.categories.length;ci++){ if(state.categories[ci].name.toLowerCase()===key){ catMap[key]=state.categories[ci].id; return catMap[key]; } }
+      var nid=uid(); state.categories.splice(state.categories.length-1,0,{id:nid,name:nm,color:PALETTE[state.categories.length%PALETTE.length],emoji:"📍"}); catMap[key]=nid; return nid; }
+    newPlaces.forEach(function(p){ var q={id:uid(),name:p.name,address:p.address,lat:p.lat,lng:p.lng,categoryId:getCatId(p._folder),notes:p.notes,hours:p.hours,website:p.website,photoUrl:p.photoUrl,googleUrl:p.googleUrl,placeId:p.placeId}; state.places.push(q); });
+    renderAll(); save(); closeModal(); toast("Merged "+newPlaces.length+" new place"+(newPlaces.length!==1?"s":"")); }; } }
+
+function mergeKMZ(file){ loadJSZip(function(){ if(!window.JSZip) return;
+  var done=function(buf){ JSZip.loadAsync(buf).then(function(zip){ var name=Object.keys(zip.files).filter(function(n){return /\.kml$/i.test(n);})[0]; if(!name){ toast("No KML inside the KMZ"); return; } zip.files[name].async("string").then(function(t){ mergeKMLText(t); }); }).catch(function(){ toast("Couldn't read that KMZ"); }); };
+  if(file.arrayBuffer) file.arrayBuffer().then(done); else { var rd=new FileReader(); rd.onload=function(){ done(rd.result); }; rd.readAsArrayBuffer(file); } }); }
+function handleMergeFile(file){ var n=file.name.toLowerCase();
+  if(/\.kmz$/.test(n)){ mergeKMZ(file); return; }
+  if(/\.kml$/.test(n)){ var rd=new FileReader(); rd.onload=function(){ mergeKMLText(rd.result); }; rd.readAsText(file); }
+  else toast("Merge only supports KML and KMZ files"); }
+
 function loadJSZip(cb){ if(window.JSZip){ cb(); return; } var s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load the KMZ reader (needs internet). Try exporting as KML instead."); }; document.head.appendChild(s); }
 function importKMZ(file){ loadJSZip(function(){ if(!window.JSZip) return;
   var done=function(buf){ JSZip.loadAsync(buf).then(function(zip){ var name=Object.keys(zip.files).filter(function(n){return /\.kml$/i.test(n);})[0]; if(!name){ toast("No KML inside the KMZ"); return; } zip.files[name].async("string").then(function(t){ importKMLText(t,file.name.replace(/\.kmz$/i,"")); }); }).catch(function(){ toast("Couldn’t read that KMZ"); }); };
@@ -2360,9 +2416,12 @@ function wireUI(){
   document.addEventListener("click",function(){ menu.classList.remove("on"); });
   menu.querySelector(".pop-menu").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; var act=b.getAttribute("data-act"); menu.classList.remove("on");
     if(act==="maps") mapsModal(); else if(act==="table") setView("table"); else if(act==="share") shareModal(); else if(act==="expjson") exportJSON(); else if(act==="expcsv") exportCSV();
-    else if(act==="imp") document.getElementById("fileInput").click(); else if(act==="impcode") importCodeModal();
+    else if(act==="imp") document.getElementById("fileInput").click();
+    else if(act==="mergeKml") document.getElementById("mergeInput").click();
+    else if(act==="impcode") importCodeModal();
     else if(act==="lang") languageModal(); else if(act==="addcat") categoryModal(); else if(act==="enrich") enrichFromGoogle(); });
   document.getElementById("fileInput").addEventListener("change",function(e){ if(e.target.files[0]) handleFile(e.target.files[0]); e.target.value=""; });
+  document.getElementById("mergeInput").addEventListener("change",function(e){ if(e.target.files[0]) handleMergeFile(e.target.files[0]); e.target.value=""; });
   document.getElementById("sideToggle").onclick=function(){ document.getElementById("aside").classList.toggle("open"); };
   document.getElementById("locateBtn").onclick=locateMe;
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });

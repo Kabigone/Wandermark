@@ -10,6 +10,24 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.62] — Merge from KML / KMZ with duplicate detection
+
+### Added
+- **"Merge from KML / KMZ into this map"** in the ⋯ menu. Unlike the existing
+  Import (which always creates a new map), Merge adds places directly into the
+  currently active map.
+- **Duplicate detection**: before merging, each incoming place is checked against
+  the current map's places. A place is considered a duplicate if:
+  - Both have matching non-empty `placeId` values, OR
+  - Names match (case-insensitive) AND coordinates are within 100 m of each other.
+- **Preview modal**: shows the total count, how many places are new, and how many
+  are duplicates (with a collapsible list of duplicate names). The user confirms
+  before anything is added — Cancel leaves the map untouched.
+- **Category mapping**: incoming KML folder names are mapped to existing categories
+  by name (case-insensitive). New folders become new categories only on confirm.
+
+---
+
 ## [0.9.61] — OAuth redirect flow replaces GIS popup (fixes sign-in on GitHub Pages)
 
 ### Fixed
