@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.60] — Two-step auth gate with auto-detect and paste-link fallback
+
+### Fixed
+- The "Welcome to Wandermark" auth gate could get permanently stuck if Google's
+  visual folder picker failed silently (e.g. if the Google Picker API wasn't
+  enabled on the GCP project, or the API key was blocked). The gate now has two
+  steps: sign-in (unchanged), then folder connection.
+- After signing in, Wandermark first searches Drive for an existing folder named
+  "Wandermark" and auto-connects if exactly one is found (no picker needed).
+- If no folder is auto-detected, the gate shows two options: "Browse & pick a
+  folder" (the visual picker, unchanged) and "Paste a Drive folder link" (a URL
+  input that extracts the folder ID from any Drive folder URL and connects
+  directly — useful when the visual picker is unavailable).
+- `showAuthGate()` now resets to step-1 when shown again (e.g. after a token
+  expiry, it goes back to the sign-in button rather than getting stuck on step-2).
+
 ## [0.9.59] — Popup photos now use background-image (silent failure) + proactive refresh
 
 ### Fixed
