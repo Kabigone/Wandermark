@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.61] — OAuth redirect flow replaces GIS popup (fixes sign-in on GitHub Pages)
+
+### Fixed
+- Google sign-in now uses a standard OAuth2 implicit redirect instead of the GIS
+  popup flow. GitHub Pages serves pages with COOP (`Cross-Origin-Opener-Policy`)
+  security headers that block the GIS popup from sending the access token back to
+  the parent window, so the sign-in callback never fired. The redirect flow
+  navigates to Google's OAuth page and back, bypassing the popup entirely.
+- Simplified silent token refresh (`trySilentDriveToken`): removed the GIS
+  `prompt:none` popup attempt, which was already failing silently in the same way
+  (visible in the console as "Failed to open popup window"). The function now just
+  checks the stored token's expiry, which is sufficient.
+- After returning from OAuth redirect, boot detects the fresh token and jumps
+  directly to folder connection (auto-detect or step-2 UI) rather than showing the
+  sign-in screen again.
+
 ## [0.9.60] — Two-step auth gate with auto-detect and paste-link fallback
 
 ### Fixed
