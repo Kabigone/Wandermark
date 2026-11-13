@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.65] — Enrich from Google now auto-categorizes places
+
+### Fixed
+- **Category never updated after enrichment**: `applyDetails` now copies the
+  `categoryId` returned by `autoCategoryGoogle` onto the place when it is still
+  `"other"`. Previously, `placeFromDetails` correctly mapped Google Places types to
+  Wandermark categories but `applyDetails` never wrote it back, so every enriched
+  place stayed in "Other" regardless of its type.
+
+---
+
 ## [0.9.64] — Fix Enrich from Google: coordinates and city-scale search
 
 ### Fixed

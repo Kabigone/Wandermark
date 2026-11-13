@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.64
+  VERSION: 0.9.65
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.65 Enrich from Google now also updates a place's category from Google's
+           place types (restaurant, bar, café, museum, etc.) — but only when
+           the place is still in the default "other" category, so manually set
+           categories are never overwritten.
     0.9.64 Fix Enrich from Google: coordinates now updated after enrichment
            (applyDetails was not copying lat/lng from Google's response, so
            places stayed at their imported city-center position forever).
@@ -736,7 +740,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.64";
+var WANDERMARK_VERSION="0.9.65";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1585,6 +1589,7 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
   function applyDetails(p,d,placeId){ var np=placeFromDetails(d,p.name,placeId);
     p.lat=np.lat; p.lng=np.lng;
     if(!p.address) p.address=np.address;
+    if(!p.categoryId||p.categoryId==="other") p.categoryId=np.categoryId;
     p.hours=np.hours||p.hours; p.hoursByDay=np.hoursByDay||p.hoursByDay;
     if(!p.website) p.website=np.website;
     if(!p.photoUrl) p.photoUrl=np.photoUrl;
