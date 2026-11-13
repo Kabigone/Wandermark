@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.63] — Merge also supports Wandermark JSON
+
+### Added
+- **Merge from Wandermark JSON**: the "Merge from KML / KMZ / JSON" option now also
+  accepts `.json` Wandermark export files. Unlike a KML merge (name + coordinates
+  only), a JSON merge preserves the full enriched place record — `placeId`, photo
+  URL, hours, website, rating, genre, and tags — so already-enriched places arrive
+  with all their data intact.
+- Source categories are mapped to the current map's categories by name
+  (case-insensitive), exactly as the KML path does.
+- Duplicate detection is the same: match by `placeId` first, then by name +
+  proximity (<100 m).
+
+---
+
 ## [0.9.62] — Merge from KML / KMZ with duplicate detection
 
 ### Added
