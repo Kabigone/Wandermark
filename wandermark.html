@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.67
+  VERSION: 0.9.68
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.68 Fix map duplication from Drive sync: deleting a local map now also
+           deletes its Drive file so sync cannot resurrect it. Auto-push of new
+           maps to Drive is now silent and only fires when a Drive folder is
+           already configured (no more unexpected "connect a folder" modals).
     0.9.67 Enrich from Google: only assign a category from Google if that
            category ID actually exists in the current map, preventing places
            from landing in a phantom category when default categories were
@@ -747,7 +751,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.67";
+var WANDERMARK_VERSION="0.9.68";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1261,7 +1265,7 @@ function createMapFromData(o){ var id=uid(); LIB.maps[id]={id:id,name:o.name||"I
    pushing it to your connected Drive folder right away. driveSaveMap already
    handles every state gracefully: publishes if ready, prompts sign-in if
    needed, or asks you to connect a Drive folder if there isn't one yet. */
-function publishNewMap(id){ var m=LIB.maps[id]; if(m&&!m.driveId) driveSaveMap(m,null,{}); }
+function publishNewMap(id){ var m=LIB.maps[id]; if(m&&!m.driveId&&appSettings.drive&&appSettings.drive.folderId) driveSaveMap(m,null,{silent:true}); }
 function normalizePlace(p){ return {id:p.id||uid(),name:p.name||"",address:p.address||"",lat:+p.lat,lng:+p.lng,categoryId:p.categoryId||"other",icon:p.icon||"",
   notes:p.notes||"",hours:p.hours||"",hoursByDay:p.hoursByDay||null,website:p.website||"",photoUrl:p.photoUrl||"",googleUrl:p.googleUrl||"",placeId:p.placeId||"",
   rating:(typeof p.rating==="number")?p.rating:null,priceLevel:(typeof p.priceLevel==="number")?p.priceLevel:null,genre:p.genre||"",
@@ -1866,8 +1870,10 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
     createMapFromData({name:m.name+(m.mine?" copy":""),kind:m.kind,places:JSON.parse(JSON.stringify(m.places)),categories:JSON.parse(JSON.stringify(m.categories))}); toast(m.mine?"Duplicated":"Copied to your maps (editable)"); mapsModal(); }; });
   modal.querySelectorAll("[data-del]").forEach(function(el){ el.onclick=function(){ var id=el.getAttribute("data-del"); if(LIB.order.length<=1){ toast("Keep at least one map"); return; }
     var m=LIB.maps[id]; if(!confirm("Delete map “"+m.name+"” and its "+m.places.length+" places? This can’t be undone.")) return;
+    var driveFileId=m.driveId||null;
     delete LIB.maps[id]; LIB.order=LIB.order.filter(function(x){return x!==id;}); if(LIB.activeId===id) setActive(LIB.order[0]);
-    save(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); } mapsModal(); toast("Map deleted"); }; });
+    save(); renderMapBtn(); renderAll(); if(ui.mapReady){ if(state.places.length) Engine.fit(state.places); } mapsModal(); toast("Map deleted");
+    if(driveFileId) driveDeleteFile(driveFileId,null); }; });
   modal.querySelectorAll("[data-pub]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-pub")]; if(m) driveSaveMap(m,function(){ mapsModal(); }); }; });
   modal.querySelectorAll("[data-share]").forEach(function(el){ el.onclick=function(){ var m=LIB.maps[el.getAttribute("data-share")]; if(m){ closeModal(); accessModal(m); } }; });
   var go=function(){ var nm=modal.querySelector("#newMapName").value.trim(); if(!nm){ toast("Name your map"); return; } var id=newMap(nm,"personal"); publishNewMap(id); switchMap(id); };
@@ -1902,6 +1908,9 @@ function driveListFolder(folderId,key,cb){ var q=encodeURIComponent("'"+folderId
   var url="https://www.googleapis.com/drive/v3/files?q="+q+"&fields="+encodeURIComponent("files(id,name,mimeType,modifiedTime,owners(me))")+"&pageSize=300";
   driveAuthedFetch(url,key).then(function(r){ return r.json(); }).then(function(d){ if(d&&d.error){ cb(null,d.error); } else cb((d&&d.files)||[],null); }).catch(function(e){ cb(null,e); }); }
 function driveFetchFile(id,key,cb){ driveAuthedFetch("https://www.googleapis.com/drive/v3/files/"+id+"?alt=media",key).then(function(r){ return r.text(); }).then(function(t){ cb(t); }).catch(function(){ cb(null); }); }
+function driveDeleteFile(fileId,cb){ if(!driveToken||Date.now()>=driveTokenExp){ if(cb) cb(false); return; }
+  fetch("https://www.googleapis.com/drive/v3/files/"+fileId,{method:"DELETE",headers:{Authorization:"Bearer "+driveToken}})
+    .then(function(r){ if(cb) cb(r.status===204||r.status===200); }).catch(function(){ if(cb) cb(false); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
 var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null, driveEverSignedIn=false;
 var DRIVE_TOKEN_KEY="wandermark:driveToken";

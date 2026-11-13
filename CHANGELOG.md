@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.68] — Fix map duplication from Drive sync
+
+### Fixed
+- **Deleting a local map no longer leaves an orphan Drive file**: the Drive file is
+  now deleted alongside the local map (silently, best-effort). Previously, Drive
+  sync would resurrect deleted maps on the next pull because the Drive file remained.
+- **Auto-push of new maps no longer shows an unexpected "connect a folder" modal**:
+  `publishNewMap` now only fires when a Drive folder is already configured, and uses
+  the silent path so it never prompts. Maps created before Drive is set up are pushed
+  the first time you explicitly save to Drive.
+
+---
+
 ## [0.9.67] — Enrich from Google: guard against deleted categories
 
 ### Fixed
