@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.64] — Fix Enrich from Google: coordinates and city-scale search
+
+### Fixed
+- **Coordinates never updated after enrichment**: `applyDetails` now copies
+  `lat`/`lng` from Google's response onto the place. Previously, `placeFromDetails`
+  computed the real GPS coordinates from Google but `applyDetails` didn't write
+  them back, so enriched places stayed at their original (e.g. city-centre) position
+  forever.
+- **200 m bias too tight for city-level imports**: `findPlaceFromQuery` now uses a
+  50 km location bias for places with no street address (address field empty or just
+  a city name), instead of the 200 m radius intended for already-precise pins. This
+  allows Google's Places API to find places across the whole city rather than
+  failing to match anything outside a tiny circle around the city centre.
+
+---
+
 ## [0.9.63] — Merge also supports Wandermark JSON
 
 ### Added

@@ -3,10 +3,16 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.63
+  VERSION: 0.9.64
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.64 Fix Enrich from Google: coordinates now updated after enrichment
+           (applyDetails was not copying lat/lng from Google's response, so
+           places stayed at their imported city-center position forever).
+           Also widens findPlaceFromQuery location bias from 200m to 50km
+           for places with no street address, so city-level imports can be
+           enriched successfully.
     0.9.63 Merge also accepts Wandermark JSON files. Preserves all enriched
            fields (placeId, photos, hours, website, rating, genre, tags)
            and maps source categories to the current map's categories by name.
@@ -730,7 +736,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.63";
+var WANDERMARK_VERSION="0.9.64";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1577,6 +1583,7 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
   var todo=state.places.slice(); if(!todo.length){ toast("No places to enrich"); return; }
   var i=0,updated=0,skipped=0; toast("Enriching "+todo.length+" place(s)…");
   function applyDetails(p,d,placeId){ var np=placeFromDetails(d,p.name,placeId);
+    p.lat=np.lat; p.lng=np.lng;
     if(!p.address) p.address=np.address;
     p.hours=np.hours||p.hours; p.hoursByDay=np.hoursByDay||p.hoursByDay;
     if(!p.website) p.website=np.website;
@@ -1594,7 +1601,8 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
         function(d){ if(d) applyDetails(p,d,p.placeId); else skipped++; step(); });
     } else {
       var query=p.name+(p.address?(", "+p.address):"");
-      withTimeout(8000,function(cb){ placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:{center:{lat:p.lat,lng:p.lng},radius:200}},function(res,st){
+      var biasRadius=p.address?200:50000;
+      withTimeout(8000,function(cb){ placesService.findPlaceFromQuery({query:query,fields:["place_id"],locationBias:{center:{lat:p.lat,lng:p.lng},radius:biasRadius}},function(res,st){
           if(st!==google.maps.places.PlacesServiceStatus.OK) console.log("[enrich] findPlace",p.name,st);
           cb((st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length)?res[0].place_id:null); }); },
         function(pid){ if(!pid){ skipped++; step(); return; }
