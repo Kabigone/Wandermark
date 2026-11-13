@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.67] — Enrich from Google: guard against deleted categories
+
+### Fixed
+- **Places assigned to non-existent category after enrichment**: `applyDetails`
+  now checks that the category ID returned by `autoCategoryGoogle` actually exists
+  in the current map before assigning it. Previously, if the standard categories
+  (Eat, Coffee, etc.) had been deleted from the map, enrichment would set
+  `categoryId` to values like `"eat"` that matched no chip, causing those places
+  to display as "Other" but not respond to the Other filter.
+
+---
+
 ## [0.9.66] — Enrich from Google resets category filter on completion
 
 ### Fixed

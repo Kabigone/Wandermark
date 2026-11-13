@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.66
+  VERSION: 0.9.67
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.67 Enrich from Google: only assign a category from Google if that
+           category ID actually exists in the current map, preventing places
+           from landing in a phantom category when default categories were
+           deleted before enrichment ran.
     0.9.66 Enrich from Google now resets the category filter on completion so
            newly categorised places are always visible (even if some chips were
            toggled off before enrichment ran).
@@ -743,7 +747,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.66";
+var WANDERMARK_VERSION="0.9.67";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1592,7 +1596,9 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
   function applyDetails(p,d,placeId){ var np=placeFromDetails(d,p.name,placeId);
     p.lat=np.lat; p.lng=np.lng;
     if(!p.address) p.address=np.address;
-    if(!p.categoryId||p.categoryId==="other") p.categoryId=np.categoryId;
+    if(!p.categoryId||p.categoryId==="other"){
+      var catInMap=false; for(var ci=0;ci<state.categories.length;ci++) if(state.categories[ci].id===np.categoryId){catInMap=true;break;}
+      if(catInMap) p.categoryId=np.categoryId; }
     p.hours=np.hours||p.hours; p.hoursByDay=np.hoursByDay||p.hoursByDay;
     if(!p.website) p.website=np.website;
     if(!p.photoUrl) p.photoUrl=np.photoUrl;
