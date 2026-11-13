@@ -10,6 +10,16 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.66] — Enrich from Google resets category filter on completion
+
+### Fixed
+- **Newly categorised places invisible after enrichment**: "Enrich from Google"
+  now resets all category filters (`ui.activeCats = {}`) when it finishes. If any
+  category chips were toggled off before enrichment ran, the places moved into
+  those categories would appear missing. Now the full result is always visible.
+
+---
+
 ## [0.9.65] — Enrich from Google now auto-categorizes places
 
 ### Fixed

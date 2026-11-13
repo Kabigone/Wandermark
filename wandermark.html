@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.65
+  VERSION: 0.9.66
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.66 Enrich from Google now resets the category filter on completion so
+           newly categorised places are always visible (even if some chips were
+           toggled off before enrichment ran).
     0.9.65 Enrich from Google now also updates a place's category from Google's
            place types (restaurant, bar, café, museum, etc.) — but only when
            the place is still in the default "other" category, so manually set
@@ -740,7 +743,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.65";
+var WANDERMARK_VERSION="0.9.66";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1595,7 +1598,7 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
     if(!p.photoUrl) p.photoUrl=np.photoUrl;
     p.googleUrl=np.googleUrl||p.googleUrl; p.placeId=placeId;
     p.rating=np.rating; p.priceLevel=np.priceLevel; p.genre=np.genre; updated++; }
-  (function next(){ if(i>=todo.length){ markDirty(); renderAll(); toast("Enriched "+updated+" place(s)"+(skipped?(", "+skipped+" skipped"):"")); return; }
+  (function next(){ if(i>=todo.length){ markDirty(); ui.activeCats={}; renderAll(); toast("Enriched "+updated+" place(s)"+(skipped?(", "+skipped+" skipped"):"")); return; }
     var p=todo[i++];
     if(i%10===1) toast("Enriching… "+i+"/"+todo.length);
     function step(){ setTimeout(next,150); }
