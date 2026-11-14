@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.72] — Label collision avoidance
+
+### Changed
+- **Place name labels no longer overlap**: a greedy collision-detection pass runs
+  after every pan or zoom and hides labels whose bounding boxes intersect an
+  already-placed label. Only non-overlapping labels are shown, reducing noise on
+  dense maps.
+- Leaflet: recalculates on `moveend` (covers both pan and zoom end).
+- Google Maps: recalculates on `idle` (fires after any pan/zoom animation
+  settles, ensuring `OverlayView` projections are ready).
+
+---
+
 ## [0.9.71] — Place name labels on the map
 
 ### Added
