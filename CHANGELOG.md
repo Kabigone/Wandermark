@@ -10,6 +10,27 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.69] — Category mapping UI for imports and merges
+
+### Added
+- **Category mapping step** on all import and merge paths (KML/KMZ and Wandermark
+  JSON): when source category names don't match the destination map's categories, a
+  "Map categories" modal appears before the merge/import confirmation.
+- Each source category gets a dropdown to map it to an existing destination category
+  or keep it as a new category ("+ Create new: …").
+- **Fuzzy pre-fills** automatically suggest the most likely destination for common
+  category names (e.g. "Restaurants" → Eat, "Bars" → Drinks, "Museums" → See,
+  "Hotels" → Stay).
+- Mapping is applied to all four paths: `importKMLText` (new map from KML/KMZ),
+  `importWandermarkData` (new map from JSON), `mergeKMLText` (KML/KMZ into existing
+  map), and `mergeWandermarkJSON` (JSON into existing map).
+- Unmapped categories ("Create new") are still added as custom categories, preserving
+  the existing behaviour when mapping is not needed.
+- Mapping modal is skipped entirely when all source categories already match the
+  destination by name.
+
+---
+
 ## [0.9.68] — Fix map duplication from Drive sync
 
 ### Fixed

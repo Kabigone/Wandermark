@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.68
+  VERSION: 0.9.69
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -751,7 +751,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.68";
+var WANDERMARK_VERSION="0.9.69";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2287,10 +2287,26 @@ function importCodeModal(){ openModal('<div class="mh"><div><h2>Import from code
   modal.querySelector("#impNew").onclick=function(){ var d=parse(); if(!d) return; closeModal(); importWandermarkData(d,true,"Shared map"); };
   modal.querySelector("#impAdd").onclick=function(){ var d=parse(); if(!d) return; closeModal(); importWandermarkData(d,false); }; }
 function importWandermarkData(d,asNew,fallbackName){
-  if(asNew){ createMapFromData({name:d.name||fallbackName||"Imported map",kind:d.kind||"personal",places:d.places,categories:d.categories}); toast('Imported map: “'+(d.name||fallbackName)+'”'); }
-  else { var n=0; (d.places||[]).forEach(function(p){ p.id=uid(); state.places.push(normalizePlace(p)); n++; });
+  if(!asNew){
+    var n=0; (d.places||[]).forEach(function(p){ p.id=uid(); state.places.push(normalizePlace(p)); n++; });
     if(d.categories) d.categories.forEach(function(c){ if(!state.categories.some(function(x){return x.id===c.id;})) state.categories.splice(state.categories.length-1,0,c); });
-    renderAll(); if(ui.mapReady&&state.places.length) Engine.fit(state.places); toast("Added "+n+" places to “"+state.name+"”"); } }
+    renderAll(); if(ui.mapReady&&state.places.length) Engine.fit(state.places); toast("Added “"+n+"” places to “"+state.name+"”"); return; }
+  var srcCats=d.categories||[]; var defaults=freshCats();
+  var defaultIds=defaults.map(function(c){return c.id;}); var defaultNames=defaults.map(function(c){return c.name.toLowerCase();});
+  var iSrcCounts={}; (d.places||[]).forEach(function(p){ if(p.categoryId) iSrcCounts[p.categoryId]=(iSrcCounts[p.categoryId]||0)+1; });
+  var iMapList=[]; srcCats.forEach(function(c){ if(iSrcCounts[c.id]&&defaultIds.indexOf(c.id)<0&&defaultNames.indexOf(c.name.toLowerCase())<0) iMapList.push({name:c.name,count:iSrcCounts[c.id]}); });
+  function doImport(catMapping){
+    var srcIdToName={}; srcCats.forEach(function(c){ srcIdToName[c.id]=c.name; });
+    var places=(d.places||[]).map(function(p){ var pl=normalizePlace(p); pl.id=uid();
+      if(catMapping){ var nm=srcIdToName[p.categoryId]||""; if(nm&&nm in catMapping){ var di=catMapping[nm]; if(di) pl.categoryId=di; } }
+      return pl; });
+    var usedIds={}; places.forEach(function(p){ usedIds[p.categoryId]=true; });
+    var finalCats=defaults.slice();
+    srcCats.forEach(function(c){ if(defaultIds.indexOf(c.id)<0&&usedIds[c.id]) finalCats.splice(finalCats.length-1,0,c); });
+    createMapFromData({name:d.name||fallbackName||"Imported map",kind:d.kind||"personal",places:places,categories:finalCats});
+    toast("Imported map: “"+(d.name||fallbackName)+"”"); }
+  if(iMapList.length) showCatMapModal(iMapList,defaults,"Choose where each category goes in the new map",function(m){ doImport(m); });
+  else doImport(null); }
 
 /* ===================== export / import files ===================== */
 function download(name,text,type){ var blob=new Blob([text],{type:type||"text/plain"}),u=URL.createObjectURL(blob),a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(u);a.remove();},500); }
@@ -2316,6 +2332,57 @@ function importCSVAsMap(text,name){ var rows=parseCSV(text); if(!rows.length){ t
   if(!n){ toast("No rows with lat/lng found"); return; }
   createMapFromData({name:name||"Imported CSV",places:places,categories:cats,kind:"personal"}); toast("Imported "+n+" places as a new map"); }
 
+/* ----- category mapping modal ----- */
+function suggestCat(name,destCats){
+  if(!name) return null;
+  var lower=name.toLowerCase();
+  for(var i=0;i<destCats.length;i++) if(destCats[i].name.toLowerCase()===lower) return destCats[i].id;
+  var KWMAP={
+    eat:["restaurant","food","eat","dining","cuisine","bistro","brasserie","gastro","dine","eatery","lunch","dinner","brunch","sushi","ramen","pizza","burger","sandwich","grill","tavern","trattoria","osteria","izakaya"],
+    coffee:["cafe","caf\xE9","coffee","tea","chocolaterie","salon de"],
+    bakery:["bakery","boulangerie","pastry","bread","patisserie"],
+    drinks:["bar","pub","drink","cocktail","wine","beer","brewery","nightclub","lounge","bodega"],
+    stay:["hotel","stay","accommodation","hostel","lodging","inn","resort"],
+    see:["museum","sight","attraction","monument","temple","church","cathedral","tour","gallery","park","landmark","heritage","memorial","historic"],
+    shop:["shop","store","mall","market","boutique","fashion","retail"]};
+  for(var catId in KWMAP){
+    var kws=KWMAP[catId];
+    for(var j=0;j<kws.length;j++){
+      if(lower.indexOf(kws[j])>=0){
+        for(var k=0;k<destCats.length;k++) if(destCats[k].id===catId) return catId;
+      }
+    }
+  }
+  return null;
+}
+function showCatMapModal(srcList,destCats,subtitle,onDone){
+  var rows=srcList.map(function(s){
+    var pre=suggestCat(s.name,destCats)||"";
+    var opts="<option value=''>+ Create new: “"+esc(s.name)+"”</option>";
+    destCats.forEach(function(c){
+      opts+="<option value='"+esc(c.id)+"'"+(c.id===pre?" selected":"")+">"+esc(c.emoji+" "+c.name)+"</option>";
+    });
+    return "<tr><td style='padding:6px 10px 6px 0;white-space:nowrap'>"+esc(s.name)
+      +"<span style='font-size:12px;color:var(--muted);margin-left:6px'>"+s.count+" place"+(s.count!==1?"s":"")+"</span></td>"
+      +"<td style='padding:6px 0'><select data-src='"+esc(s.name)+"' style='font-size:13px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);max-width:160px'>"+opts+"</select></td></tr>";
+  }).join("");
+  openModal("<div class='mh'><div><h2>Map categories</h2>"
+    +"<p style='font-size:13px;color:var(--muted);margin:2px 0 0'>"+esc(subtitle)+"</p></div><button class='close'>✕</button></div>"
+    +"<div class='mb'><table style='width:100%;border-collapse:collapse'>"+rows+"</table>"
+    +"<div style='display:flex;gap:8px;margin-top:14px'>"
+    +"<button class='pillbtn' id='catMapContinue' style='background:var(--teal)'>Continue →</button>"
+    +"<button class='pillbtn' id='catMapCancel'>Cancel</button></div></div>");
+  modal.querySelector(".close").onclick=closeModal;
+  document.getElementById("catMapCancel").onclick=closeModal;
+  document.getElementById("catMapContinue").onclick=function(){
+    var mapping={};
+    var sels=modal.querySelectorAll("select[data-src]");
+    for(var i=0;i<sels.length;i++) mapping[sels[i].getAttribute("data-src")]=sels[i].value;
+    closeModal();
+    onDone(mapping);
+  };
+}
+
 /* ----- Google My Maps: KML / KMZ ----- */
 function xmlEls(parent,tag){ var a=null; try{ a=parent.getElementsByTagNameNS("*",tag); }catch(e){} if(a&&a.length) return a; return parent.getElementsByTagName(tag); }
 function txt(el){ return el?(el.textContent||"").trim():""; }
@@ -2333,7 +2400,20 @@ function importKMLText(text,fname){ var xml; try{ xml=new DOMParser().parseFromS
     while(node && node.nodeType===1){ var ln=(node.localName||node.nodeName||"").toLowerCase(); if(ln==="folder"){ var fn=xmlEls(node,"name")[0]; if(fn){ folder=txt(fn); } break; } node=node.parentNode; }
     places.push({name:nm||"Untitled",address:"",lat:lat,lng:lng,categoryId:ensureCat(folder),notes:desc.slice(0,300),hours:"",website:"",photoUrl:"",googleUrl:"",placeId:""}); }
   if(!places.length){ toast("No pinned points found in that file"); return; }
-  createMapFromData({name:mapName,places:places,categories:cats,kind:"personal"}); toast("Imported "+places.length+" places from My Maps"); }
+  var srcCatCounts={}; places.forEach(function(p){ srcCatCounts[p.categoryId]=(srcCatCounts[p.categoryId]||0)+1; });
+  var needsMapList=[]; cats.forEach(function(c){ if(!DEFAULT_CATS.some(function(d){return d.id===c.id;})&&srcCatCounts[c.id]) needsMapList.push({name:c.name,count:srcCatCounts[c.id]}); });
+  function doCreate(catMapping){
+    if(catMapping){
+      var catIdToName={}; cats.forEach(function(c){ catIdToName[c.id]=c.name; });
+      places.forEach(function(p){ var cn=catIdToName[p.categoryId]||""; if(cn&&cn in catMapping){var di=catMapping[cn]; if(di) p.categoryId=di;} });
+      var usedIds={}; places.forEach(function(p){ usedIds[p.categoryId]=true; });
+      var nc=freshCats();
+      for(var ci=0;ci<cats.length;ci++) if(!DEFAULT_CATS.some(function(d){return d.id===cats[ci].id;})&&usedIds[cats[ci].id]) nc.splice(nc.length-1,0,cats[ci]);
+      cats=nc;
+    }
+    createMapFromData({name:mapName,places:places,categories:cats,kind:"personal"}); toast("Imported "+places.length+" places from My Maps"); }
+  if(needsMapList.length) showCatMapModal(needsMapList,freshCats(),"Choose where each folder goes in the new map",function(m){ doCreate(m); });
+  else doCreate(null); }
 
 function mergeKMLText(text){
   var xml; try{ xml=new DOMParser().parseFromString(text,"application/xml"); }catch(e){ toast("Couldn't parse KML"); return; }
@@ -2354,27 +2434,36 @@ function mergeKMLText(text){
       if(p.placeId&&ex.placeId&&p.placeId===ex.placeId){ isDupe=true; break; }
       if(p.name&&ex.name&&p.name.toLowerCase()===ex.name.toLowerCase()&&haversine(p,ex)!==null&&haversine(p,ex)<0.1){ isDupe=true; break; } }
     if(isDupe) dupes.push(p); else newPlaces.push(p); }
-  var dupeHtml="";
-  if(dupes.length){ var shown=dupes.slice(0,8).map(function(d){ return "<li>"+esc(d.name)+"</li>"; }).join("");
-    if(dupes.length>8) shown+="<li style='color:var(--muted)'>…and "+(dupes.length-8)+" more</li>";
-    dupeHtml="<details style='margin:10px 0'><summary style='cursor:pointer;font-size:13px;color:var(--muted)'>"+dupes.length+" already in this map (will be skipped)</summary><ul style='margin:6px 0 0;padding-left:20px;font-size:13px'>"+shown+"</ul></details>"; }
-  var btnHtml=newPlaces.length
-    ? "<button class='pillbtn' id='mergeConfirm' style='background:var(--teal)'>＋ Merge "+newPlaces.length+" new places</button>"
-    : "<button class='pillbtn' disabled style='opacity:.45'>Nothing new to merge</button>";
-  openModal("<div class='mh'><div><h2>Merge from KML / KMZ</h2></div><button class='close'>✕</button></div>"
-    +"<div class='mb'><p>Found <strong>"+incoming.length+"</strong> place"+(incoming.length!==1?"s":"")+": <strong>"+newPlaces.length+"</strong> new"
-    +(dupes.length?" · "+dupes.length+" duplicate"+(dupes.length!==1?"s":"")+" skipped":"")+"."+
-    (newPlaces.length===0?" <em style='color:var(--muted)'>Everything is already in this map.</em>":"")+"</p>"
-    +dupeHtml
-    +"<div style='display:flex;gap:8px;margin-top:14px'>"+btnHtml+"<button class='pillbtn' id='mergeCancelBtn'>Cancel</button></div></div>");
-  document.getElementById("mergeCancelBtn").onclick=closeModal;
-  if(newPlaces.length){ document.getElementById("mergeConfirm").onclick=function(){
-    var catMap={};
-    function getCatId(nm){ if(!nm) return "other"; var key=nm.toLowerCase(); if(catMap[key]) return catMap[key];
-      for(var ci=0;ci<state.categories.length;ci++){ if(state.categories[ci].name.toLowerCase()===key){ catMap[key]=state.categories[ci].id; return catMap[key]; } }
-      var nid=uid(); state.categories.splice(state.categories.length-1,0,{id:nid,name:nm,color:PALETTE[state.categories.length%PALETTE.length],emoji:"📍"}); catMap[key]=nid; return nid; }
-    newPlaces.forEach(function(p){ var q={id:uid(),name:p.name,address:p.address,lat:p.lat,lng:p.lng,categoryId:getCatId(p._folder),notes:p.notes,hours:p.hours,website:p.website,photoUrl:p.photoUrl,googleUrl:p.googleUrl,placeId:p.placeId}; state.places.push(q); });
-    renderAll(); save(); closeModal(); toast("Merged "+newPlaces.length+" new place"+(newPlaces.length!==1?"s":"")); }; } }
+  var kmlSrcCounts={}; newPlaces.forEach(function(p){ var f=p._folder||""; if(f) kmlSrcCounts[f]=(kmlSrcCounts[f]||0)+1; });
+  var kmlMapList=[]; for(var kf in kmlSrcCounts){ if(!state.categories.some(function(c){return c.name.toLowerCase()===kf.toLowerCase();})) kmlMapList.push({name:kf,count:kmlSrcCounts[kf]}); }
+  function showKMLMergePreview(catMapping){
+    var dupeHtml="";
+    if(dupes.length){ var shown=dupes.slice(0,8).map(function(d){ return "<li>"+esc(d.name)+"</li>"; }).join("");
+      if(dupes.length>8) shown+="<li style='color:var(--muted)'>…and "+(dupes.length-8)+" more</li>";
+      dupeHtml="<details style='margin:10px 0'><summary style='cursor:pointer;font-size:13px;color:var(--muted)'>"+dupes.length+" already in this map (will be skipped)</summary><ul style='margin:6px 0 0;padding-left:20px;font-size:13px'>"+shown+"</ul></details>"; }
+    var btnHtml=newPlaces.length
+      ? "<button class='pillbtn' id='mergeConfirm' style='background:var(--teal)'>＋ Merge "+newPlaces.length+" new places</button>"
+      : "<button class='pillbtn' disabled style='opacity:.45'>Nothing new to merge</button>";
+    openModal("<div class='mh'><div><h2>Merge from KML / KMZ</h2></div><button class='close'>✕</button></div>"
+      +"<div class='mb'><p>Found <strong>"+incoming.length+"</strong> place"+(incoming.length!==1?"s":"")+": <strong>"+newPlaces.length+"</strong> new"
+      +(dupes.length?" · "+dupes.length+" duplicate"+(dupes.length!==1?"s":"")+" skipped":"")+"."+
+      (newPlaces.length===0?" <em style='color:var(--muted)'>Everything is already in this map.</em>":"")+"</p>"
+      +dupeHtml
+      +"<div style='display:flex;gap:8px;margin-top:14px'>"+btnHtml+"<button class='pillbtn' id='mergeCancelBtn'>Cancel</button></div></div>");
+    modal.querySelector(".close").onclick=closeModal;
+    document.getElementById("mergeCancelBtn").onclick=closeModal;
+    if(newPlaces.length){ document.getElementById("mergeConfirm").onclick=function(){
+      var catMap={};
+      function getCatId(nm){ if(!nm) return "other";
+        if(catMapping&&nm in catMapping){ var di=catMapping[nm]; if(di) return di; }
+        var key=nm.toLowerCase(); if(catMap[key]) return catMap[key];
+        for(var ci=0;ci<state.categories.length;ci++){ if(state.categories[ci].name.toLowerCase()===key){ catMap[key]=state.categories[ci].id; return catMap[key]; } }
+        var nid=uid(); state.categories.splice(state.categories.length-1,0,{id:nid,name:nm,color:PALETTE[state.categories.length%PALETTE.length],emoji:"📍"}); catMap[key]=nid; return nid; }
+      newPlaces.forEach(function(p){ var q={id:uid(),name:p.name,address:p.address,lat:p.lat,lng:p.lng,categoryId:getCatId(p._folder),notes:p.notes,hours:p.hours,website:p.website,photoUrl:p.photoUrl,googleUrl:p.googleUrl,placeId:p.placeId}; state.places.push(q); });
+      renderAll(); save(); closeModal(); toast("Merged "+newPlaces.length+" new place"+(newPlaces.length!==1?"s":"")); }; }
+  }
+  if(kmlMapList.length) showCatMapModal(kmlMapList,state.categories,"Choose where each KML folder goes in this map",function(m){ showKMLMergePreview(m); });
+  else showKMLMergePreview(null); }
 
 function mergeKMZ(file){ loadJSZip(function(){ if(!window.JSZip) return;
   var done=function(buf){ JSZip.loadAsync(buf).then(function(zip){ var name=Object.keys(zip.files).filter(function(n){return /\.kml$/i.test(n);})[0]; if(!name){ toast("No KML inside the KMZ"); return; } zip.files[name].async("string").then(function(t){ mergeKMLText(t); }); }).catch(function(){ toast("Couldn't read that KMZ"); }); };
@@ -2398,31 +2487,40 @@ function mergeWandermarkJSON(text){
       if(p.name&&ex.name&&p.name.toLowerCase()===ex.name.toLowerCase()){
         var dist=haversine(p,ex); if(dist===null||dist<0.1){ isDupe=true; break; } } }
     if(isDupe) dupes.push(p); else newPlaces.push(p); }
-  var dupeHtml="";
-  if(dupes.length){ var shown=dupes.slice(0,8).map(function(d2){ return "<li>"+esc(d2.name)+"</li>"; }).join("");
-    if(dupes.length>8) shown+="<li style='color:var(--muted)'>…and "+(dupes.length-8)+" more</li>";
-    dupeHtml="<details style='margin:10px 0'><summary style='cursor:pointer;font-size:13px;color:var(--muted)'>"+dupes.length+" already in this map (will be skipped)</summary><ul style='margin:6px 0 0;padding-left:20px;font-size:13px'>"+shown+"</ul></details>"; }
-  var btnHtml=newPlaces.length
-    ? "<button class='pillbtn' id='mergeConfirm' style='background:var(--teal)'>＋ Merge "+newPlaces.length+" new places</button>"
-    : "<button class='pillbtn' disabled style='opacity:.45'>Nothing new to merge</button>";
-  openModal("<div class='mh'><div><h2>Merge from Wandermark JSON</h2></div><button class='close'>✕</button></div>"
-    +"<div class='mb'><p>Found <strong>"+incoming.length+"</strong> place"+(incoming.length!==1?"s":"")+": <strong>"+newPlaces.length+"</strong> new"
-    +(dupes.length?" · "+dupes.length+" duplicate"+(dupes.length!==1?"s":"")+" skipped":"")+"."+
-    (newPlaces.length===0?" <em style='color:var(--muted)'>Everything is already in this map.</em>":"")+"</p>"
-    +dupeHtml
-    +"<div style='display:flex;gap:8px;margin-top:14px'>"+btnHtml+"<button class='pillbtn' id='mergeCancelBtn'>Cancel</button></div></div>");
-  document.getElementById("mergeCancelBtn").onclick=closeModal;
-  if(newPlaces.length){ document.getElementById("mergeConfirm").onclick=function(){
-    var catMap={};
-    function getCatId(nm){ if(!nm) return "other"; var key=nm.toLowerCase(); if(catMap[key]) return catMap[key];
-      for(var ci=0;ci<state.categories.length;ci++){ if(state.categories[ci].name.toLowerCase()===key){ catMap[key]=state.categories[ci].id; return catMap[key]; } }
-      var nid=uid(); state.categories.splice(state.categories.length-1,0,{id:nid,name:nm,color:PALETTE[state.categories.length%PALETTE.length],emoji:"📍"}); catMap[key]=nid; return nid; }
-    newPlaces.forEach(function(p){
-      state.places.push({id:uid(),name:p.name,address:p.address,lat:p.lat,lng:p.lng,
-        categoryId:getCatId(p._catName),notes:p.notes,hours:p.hours,website:p.website,
-        photoUrl:p.photoUrl,googleUrl:p.googleUrl,placeId:p.placeId,
-        rating:p.rating,priceLevel:p.priceLevel,genre:p.genre,tags:p.tags}); });
-    renderAll(); save(); closeModal(); toast("Merged "+newPlaces.length+" new place"+(newPlaces.length!==1?"s":"")); }; } }
+  var jSrcCounts={}; newPlaces.forEach(function(p){ var cn=p._catName||""; if(cn) jSrcCounts[cn]=(jSrcCounts[cn]||0)+1; });
+  var jMapList=[]; for(var jn in jSrcCounts){ if(!state.categories.some(function(c){return c.name.toLowerCase()===jn.toLowerCase();})) jMapList.push({name:jn,count:jSrcCounts[jn]}); }
+  function showJSONMergePreview(catMapping){
+    var dupeHtml="";
+    if(dupes.length){ var shown=dupes.slice(0,8).map(function(d2){ return "<li>"+esc(d2.name)+"</li>"; }).join("");
+      if(dupes.length>8) shown+="<li style='color:var(--muted)'>…and "+(dupes.length-8)+" more</li>";
+      dupeHtml="<details style='margin:10px 0'><summary style='cursor:pointer;font-size:13px;color:var(--muted)'>"+dupes.length+" already in this map (will be skipped)</summary><ul style='margin:6px 0 0;padding-left:20px;font-size:13px'>"+shown+"</ul></details>"; }
+    var btnHtml=newPlaces.length
+      ? "<button class='pillbtn' id='mergeConfirm' style='background:var(--teal)'>＋ Merge "+newPlaces.length+" new places</button>"
+      : "<button class='pillbtn' disabled style='opacity:.45'>Nothing new to merge</button>";
+    openModal("<div class='mh'><div><h2>Merge from Wandermark JSON</h2></div><button class='close'>✕</button></div>"
+      +"<div class='mb'><p>Found <strong>"+incoming.length+"</strong> place"+(incoming.length!==1?"s":"")+": <strong>"+newPlaces.length+"</strong> new"
+      +(dupes.length?" · "+dupes.length+" duplicate"+(dupes.length!==1?"s":"")+" skipped":"")+"."+
+      (newPlaces.length===0?" <em style='color:var(--muted)'>Everything is already in this map.</em>":"")+"</p>"
+      +dupeHtml
+      +"<div style='display:flex;gap:8px;margin-top:14px'>"+btnHtml+"<button class='pillbtn' id='mergeCancelBtn'>Cancel</button></div></div>");
+    modal.querySelector(".close").onclick=closeModal;
+    document.getElementById("mergeCancelBtn").onclick=closeModal;
+    if(newPlaces.length){ document.getElementById("mergeConfirm").onclick=function(){
+      var catMap={};
+      function getCatId(nm){ if(!nm) return "other";
+        if(catMapping&&nm in catMapping){ var di=catMapping[nm]; if(di) return di; }
+        var key=nm.toLowerCase(); if(catMap[key]) return catMap[key];
+        for(var ci=0;ci<state.categories.length;ci++){ if(state.categories[ci].name.toLowerCase()===key){ catMap[key]=state.categories[ci].id; return catMap[key]; } }
+        var nid=uid(); state.categories.splice(state.categories.length-1,0,{id:nid,name:nm,color:PALETTE[state.categories.length%PALETTE.length],emoji:"📍"}); catMap[key]=nid; return nid; }
+      newPlaces.forEach(function(p){
+        state.places.push({id:uid(),name:p.name,address:p.address,lat:p.lat,lng:p.lng,
+          categoryId:getCatId(p._catName),notes:p.notes,hours:p.hours,website:p.website,
+          photoUrl:p.photoUrl,googleUrl:p.googleUrl,placeId:p.placeId,
+          rating:p.rating,priceLevel:p.priceLevel,genre:p.genre,tags:p.tags}); });
+      renderAll(); save(); closeModal(); toast("Merged "+newPlaces.length+" new place"+(newPlaces.length!==1?"s":"")); }; }
+  }
+  if(jMapList.length) showCatMapModal(jMapList,state.categories,"Choose where each category goes in this map",function(m){ showJSONMergePreview(m); });
+  else showJSONMergePreview(null); }
 
 function handleMergeFile(file){ var n=file.name.toLowerCase();
   if(/\.kmz$/.test(n)){ mergeKMZ(file); return; }
