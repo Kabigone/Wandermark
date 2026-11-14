@@ -10,6 +10,19 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.70] — Persistent text filter + no duplicate from search
+
+### Changed
+- **Text filter is now always visible** at the top of the sidebar, outside the
+  collapsible "More filters" section. Previously it was hidden inside the collapsed
+  Filter section and easy to miss.
+
+### Fixed
+- **Clicking an "✓ On this map" search result no longer adds a duplicate.** It now
+  zooms to and opens the existing place on the map instead of calling `addPlace`.
+
+---
+
 ## [0.9.69] — Category mapping UI for imports and merges
 
 ### Added
