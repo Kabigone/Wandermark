@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.70
+  VERSION: 0.9.71
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.71 Place name labels on the map: show place names on pins at zoom>=13,
+           for both Leaflet (permanent tooltips) and Google Maps (OverlayView).
     0.9.68 Fix map duplication from Drive sync: deleting a local map now also
            deletes its Drive file so sync cannot resurrect it. Auto-push of new
            maps to Drive is now silent and only fires when a Drive folder is
@@ -499,6 +501,10 @@
   .mk-ref{width:18px;height:18px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 3px rgba(44,114,108,.4),0 2px 5px rgba(0,0,0,.3)}
   .leaflet-popup-content-wrapper{border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
   .leaflet-popup-content{margin:13px 14px;font-family:"Hanken Grotesk",sans-serif}
+  .leaflet-tooltip.place-label{background:rgba(255,255,255,.88);border:none;box-shadow:0 1px 3px rgba(0,0,0,.18);padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;color:#333;white-space:nowrap;pointer-events:none;visibility:hidden;opacity:0;transition:opacity .15s}
+  .leaflet-tooltip.place-label::before{display:none}
+  .labels-on .leaflet-tooltip.place-label{visibility:visible;opacity:1}
+  .g-place-label{position:absolute;font-size:11px;font-weight:600;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap;pointer-events:none;padding:1px 5px;background:rgba(255,255,255,.85);border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
   .pop{width:252px}
   .pop-photo{width:100%;height:118px;background-size:cover;background-position:center;border-radius:9px;margin-bottom:8px}
   .pop h4{font-family:"Fraunces",serif;margin:0 0 2px;font-size:16px;font-weight:700;line-height:1.2}
@@ -751,7 +757,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.70";
+var WANDERMARK_VERSION="0.9.71";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1460,6 +1466,8 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   return node; }
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
+function truncLabel(s){ return s&&s.length>22?s.slice(0,20)+'…':s||''; }
+function updateLeafletLabelVisibility(){ if(!leafletMap) return; leafletMap.getContainer().classList.toggle('labels-on',leafletMap.getZoom()>=13); }
 /* ===================== Leaflet engine ===================== */
 var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null, leafletClickTimer=null;
 var LeafletEngine={
@@ -1474,13 +1482,16 @@ var LeafletEngine={
       leafletClickTimer=setTimeout(function(){ leafletClickTimer=null; pinNameModal(lat,lng); },300); });
     leafletMap.on("dblclick",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } });
     leafletMap.on("dragstart",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } });
-    leafletMap.on("zoomstart",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } }); },
+    leafletMap.on("zoomstart",function(){ if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; } });
+    leafletMap.on("zoomend",updateLeafletLabelVisibility); },
   setView:function(v){ if(leafletMap) leafletMap.setView([v.lat,v.lng],v.z||12); },
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
   refresh:function(list){ leafletLayer.clearLayers(); markers={};
     list.forEach(function(p){ var c=catById(p.categoryId);
       var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div class="mk-pin" style="--c:'+c.color+'"><span>'+placeIcon(p)+"</span></div>",iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
+      mk.bindTooltip(truncLabel(p.name),{permanent:true,direction:"right",className:"place-label",opacity:1,offset:[4,0]});
       mk.bindPopup(function(){ return makePopupNode(p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[p.id]=mk; });
+    updateLeafletLabelVisibility();
     if(leafletRef){ leafletMap.removeLayer(leafletRef); leafletRef=null; }
     var a=getAnchor(); if(a) leafletRef=L.marker([a.lat,a.lng],{icon:L.divIcon({className:"",html:'<div class="mk-ref"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:-100}).addTo(leafletMap); },
   open:function(p){ leafletMap.flyTo([p.lat,p.lng],16,{duration:.6}); var mk=markers[p.id]; if(mk) setTimeout(function(){mk.openPopup();},650); },
@@ -1506,7 +1517,8 @@ var LeafletEngine={
 };
 
 /* ===================== Google engine ===================== */
-var googleMap=null, gInfo=null, gMarkers={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false, gClickTimer=null;
+var googleMap=null, gInfo=null, gMarkers={}, gLabels={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false, gClickTimer=null, GoogleLabelOverlay=null;
+function updateGoogleLabelVisibility(){ if(!googleMap) return; var on=googleMap.getZoom()>=13; Object.keys(gLabels).forEach(function(k){ if(gLabels[k]&&gLabels[k]._div) gLabels[k]._div.style.display=on?"":"none"; }); }
 function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
   return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
 var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website","rating","price_level"];
@@ -1535,13 +1547,21 @@ var GoogleEngine={
       gClickTimer=setTimeout(function(){ gClickTimer=null; if(pid) poiModal(pid,lat,lng); else pinNameModal(lat,lng); },300); });
     googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
     googleMap.addListener("dragstart",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
-    googleMap.addListener("zoom_changed",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } }); },
+    googleMap.addListener("zoom_changed",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } updateGoogleLabelVisibility(); });
+    var GLabel=function(lat,lng,text){ this._latlng=new google.maps.LatLng(lat,lng); this._text=text; this._div=null; this.setMap(googleMap); };
+    GLabel.prototype=new google.maps.OverlayView();
+    GLabel.prototype.onAdd=function(){ var d=document.createElement("div"); d.className="g-place-label"; d.textContent=this._text; d.style.display=googleMap.getZoom()>=13?"":"none"; this._div=d; this.getPanes().overlayLayer.appendChild(d); };
+    GLabel.prototype.draw=function(){ var proj=this.getProjection(); if(!proj||!this._div) return; var pt=proj.fromLatLngToDivPixel(this._latlng); if(pt){ this._div.style.left=Math.round(pt.x+18)+"px"; this._div.style.top=Math.round(pt.y-38)+"px"; } };
+    GLabel.prototype.onRemove=function(){ if(this._div){ this._div.parentNode&&this._div.parentNode.removeChild(this._div); this._div=null; } };
+    GoogleLabelOverlay=GLabel; },
   setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
   getCenter:function(){ return googleMap.getCenter().toJSON(); },
   refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
+    Object.keys(gLabels).forEach(function(k){ gLabels[k].setMap(null); }); gLabels={};
     list.forEach(function(p){ var c=catById(p.categoryId);
       var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color),label:{text:placeIcon(p),fontSize:"15px"},title:p.name||""});
-      mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk; });
+      mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk;
+      if(GoogleLabelOverlay) gLabels[p.id]=new GoogleLabelOverlay(p.lat,p.lng,truncLabel(p.name)); });
     if(gRef){ gRef.setMap(null); gRef=null; }
     var a=getAnchor(); if(a) gRef=new google.maps.Marker({position:{lat:a.lat,lng:a.lng},map:googleMap,zIndex:-100,icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2c726c",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
   open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); } },
@@ -1635,7 +1655,7 @@ var Engine=LeafletEngine;
 /* ===================== engine switching ===================== */
 function teardownMap(){ ui.mapReady=false;
   try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; leafletMe=null; } }catch(e){}
-  googleMap=null; gInfo=null; gRef=null; gMe=null; markers={}; gMarkers={};
+  Object.keys(gLabels).forEach(function(k){ try{gLabels[k].setMap(null);}catch(e){} }); googleMap=null; gInfo=null; gRef=null; gMe=null; markers={}; gMarkers={}; gLabels={}; GoogleLabelOverlay=null;
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
 function startEngine(kind){ teardownMap();
   if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }

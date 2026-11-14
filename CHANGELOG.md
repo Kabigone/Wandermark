@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.71] — Place name labels on the map
+
+### Added
+- **Place name labels** appear directly on map pins (like Google Maps) at zoom
+  level 13 and above. Labels are hidden at lower zooms to avoid clutter.
+- Works in both map engines: Leaflet uses permanent tooltips; Google Maps uses a
+  custom `OverlayView` overlay per marker.
+- Names longer than 22 characters are truncated with an ellipsis.
+
+---
+
 ## [0.9.70] — Persistent text filter + no duplicate from search
 
 ### Changed
