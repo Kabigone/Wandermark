@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.73] — Filter UX: clear button + Open now chip
+
+### Added
+- **✕ clear button** on the text filter input — appears when the field has text,
+  one click empties it and re-renders.
+- **"Open now" chip** always visible below the text filter — one click enables
+  the hours filter set to the current time; clicking again turns it off.
+  State stays in sync with the manual controls inside "More filters".
+
+---
+
 ## [0.9.72] — Label collision avoidance
 
 ### Changed

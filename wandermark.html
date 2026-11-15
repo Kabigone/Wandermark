@@ -3,10 +3,11 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.72
+  VERSION: 0.9.73
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.73 Clear button on text filter; “Open now” quick-filter chip.
     0.9.72 Label collision avoidance: only show labels that fit without overlapping.
            Recalculates on every pan/zoom for both Leaflet and Google Maps engines.
     0.9.71 Place name labels on the map: show place names on pins at zoom>=13,
@@ -676,7 +677,8 @@
   <main>
     <aside id="aside">
       <div class="pane">
-        <div class="field" style="margin-bottom:12px"><input id="textFilter" placeholder="Filter by name / note…" autocomplete="off"></div>
+        <div class="field" style="margin-bottom:8px;position:relative"><input id="textFilter" placeholder="Filter by name / note…" autocomplete="off" style="padding-right:28px"><button id="textFilterClear" aria-label="Clear filter" style="display:none;position:absolute;right:7px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;padding:0 2px">✕</button></div>
+        <div style="margin-bottom:12px"><button id="openNowBtn" class="chip" style="font-size:12px;padding:4px 10px;cursor:pointer">🕔 Open now</button></div>
         <div class="sec collapsible collapsed" id="filterSec">
           <h3 class="toggler" id="filterToggle">More filters <span class="ln"></span> <span class="fbadge" id="fbadge" style="display:none"></span> <span class="caret">▾</span></h3>
           <div class="sec-body">
@@ -758,7 +760,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.72";
+var WANDERMARK_VERSION="0.9.73";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1781,7 +1783,12 @@ function renderTagFilter(){ var tags=allTags(),wrap=document.getElementById("tag
     var n=state.places.filter(function(p){return (p.tags||[]).indexOf(t)>=0;}).length;
     d.innerHTML=esc(t)+' <span class="ct">'+n+"</span>";
     d.onclick=function(){ if(on) delete ui.activeTags[t]; else ui.activeTags[t]=true; renderAll(); }; el.appendChild(d); }); }
-function updateFilterBadge(){ var n=activeFilterCount(),b=document.getElementById("fbadge"); if(n){ b.style.display=""; b.textContent=n; } else b.style.display="none"; }
+function updateFilterBadge(){
+  var n=activeFilterCount(),b=document.getElementById("fbadge"); if(n){ b.style.display=""; b.textContent=n; } else b.style.display="none";
+  var xb=document.getElementById("textFilterClear"); if(xb) xb.style.display=(document.getElementById("textFilter").value||"")?"":"none";
+  var onb=document.getElementById("openNowBtn");
+  if(onb) onb.classList.toggle("sel",document.getElementById("openOnly").checked&&document.getElementById("timeFilter").value==="now");
+}
 function renderCatChips(){ var el=document.getElementById("catChips"); el.innerHTML="";
   state.categories.forEach(function(cRaw){ var c=catById(cRaw.id); var n=state.places.filter(function(p){return p.categoryId===cRaw.id;}).length; var active=ui.activeCats[cRaw.id]!==false;
     var d=document.createElement("div"); d.className="chip"+(active?"":" off");
@@ -2639,6 +2646,23 @@ function wireUI(){
   document.getElementById("filterToggle").onclick=function(){ document.getElementById("filterSec").classList.toggle("collapsed"); };
   var renderSoon=debounce(renderAll,220);
   ["textFilter","radius","customTime"].forEach(function(id){ document.getElementById(id).addEventListener("input",renderSoon); });
+  document.getElementById("textFilter").addEventListener("input",function(){
+    var xb=document.getElementById("textFilterClear"); if(xb) xb.style.display=this.value?"":"none"; });
+  document.getElementById("textFilterClear").onclick=function(){
+    document.getElementById("textFilter").value=""; renderAll(); };
+  document.getElementById("openNowBtn").onclick=function(){
+    var nowOn=document.getElementById("openOnly").checked&&document.getElementById("timeFilter").value==="now";
+    if(nowOn){
+      document.getElementById("openOnly").checked=false;
+      document.getElementById("hoursControls").style.display="none";
+      document.getElementById("timeFilter").value="";
+    } else {
+      document.getElementById("openOnly").checked=true;
+      document.getElementById("hoursControls").style.display="";
+      document.getElementById("timeFilter").value="now";
+      document.getElementById("customTimeWrap").style.display="none";
+    }
+    renderAll(); };
   document.getElementById("tagMode").onclick=function(){ ui.tagMode=(ui.tagMode==="any"?"all":"any"); renderAll(); };
   document.getElementById("dayFilter").addEventListener("change",renderAll);
   document.getElementById("timeFilter").addEventListener("change",function(e){ document.getElementById("customTimeWrap").style.display=(e.target.value==="custom")?"":"none"; renderAll(); });
