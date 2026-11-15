@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.75] — Heading fan on "you are here" dot
+
+### Added
+- **Direction-of-travel cone** on the "you are here" dot: a translucent blue 90°
+  fan appears behind the dot while moving, pointing in the direction of travel —
+  the same visual cue as Google Maps.
+- Works in both Leaflet (OSM) and Google Maps engines via an inline SVG icon.
+- Fan is hidden when the device is stationary or the browser can't determine
+  heading (`heading` is `null` or `NaN` from the Geolocation API).
+- Location marker updates efficiently via `setLatLng`/`setIcon` without
+  recreating the marker on each position tick.
+
+---
+
 ## [0.9.74] — Silent Drive re-auth (stay signed in across sessions)
 
 ### Fixed
