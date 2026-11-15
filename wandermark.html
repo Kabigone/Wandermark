@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.73
+  VERSION: 0.9.74
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.74 Silent Drive re-auth: trySilentDriveToken now actually calls GIS
+           with prompt="" so an expired token is refreshed automatically
+           (no popup) as long as the browser still has a Google session.
     0.9.73 Clear button on text filter; “Open now” quick-filter chip.
     0.9.72 Label collision avoidance: only show labels that fit without overlapping.
            Recalculates on every pan/zoom for both Leaflet and Google Maps engines.
@@ -760,7 +763,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.73";
+var WANDERMARK_VERSION="0.9.74";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2120,7 +2123,17 @@ function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.
 var autoPushTimers={};
 function trySilentDriveToken(cb){
   if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
-  cb(false); }
+  var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ cb(false); return; }
+  loadGIS(function(){
+    var sc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
+      callback:function(resp){
+        if(resp&&resp.access_token){
+          driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000;
+          driveUserInfo=null; saveDriveToken(); updateSigninBadge(); cb(true);
+        } else { cb(false); }
+      },
+      error_callback:function(){ cb(false); } });
+    sc.requestAccessToken({prompt:""}); }); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
   toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }

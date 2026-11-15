@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.74] — Silent Drive re-auth (stay signed in across sessions)
+
+### Fixed
+- **Drive sign-in now persists across page loads and tab closes.** When the
+  one-hour Google access token expires, `trySilentDriveToken` now actually
+  calls Google Identity Services with `prompt:""` (no popup, no consent
+  screen) to get a fresh token silently — as long as the browser still has
+  an active Google session. Previously this function was a stub that
+  immediately returned "failed", forcing a manual sign-in click every hour.
+
+---
+
 ## [0.9.73] — Filter UX: clear button + Open now chip
 
 ### Added
