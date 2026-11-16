@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.79
+  VERSION: 0.9.80
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -762,7 +762,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.79";
+var WANDERMARK_VERSION="0.9.80";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2054,7 +2054,7 @@ function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.cli
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   loadGIS(function(){
     if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
         else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
     pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
@@ -2067,7 +2067,7 @@ function signOutDrive(cb){ var tok=driveToken; driveToken=""; driveTokenExp=0; d
 function switchDriveAccount(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
   signOutDrive(function(){ loadGIS(function(){
     var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); if(cb) cb(); }
+      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); if(cb) cb(); }
         else toast("Google sign-in was cancelled or failed"); },
       error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); } });
     client.requestAccessToken({prompt:"select_account"}); }); }); }
@@ -2129,7 +2129,7 @@ function handleOAuthRedirectReturn(){
   if(history.replaceState) history.replaceState(null,"",location.pathname+location.search);
   var tm=hash.match(/[#&]access_token=([^&]+)/), em=hash.match(/[#&]expires_in=([^&]+)/), errm=hash.match(/[#&]error=([^&]+)/);
   if(tm){ driveToken=decodeURIComponent(tm[1]); driveTokenExp=Date.now()+((parseInt((em||[])[1])||3000)*1000)-60000;
-    driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); return true; }
+    driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); scheduleTokenRefresh(); return true; }
   if(errm) setTimeout(function(){ toast("Google sign-in failed: "+decodeURIComponent(errm[1])); },800);
   return false; }
 function afterDriveTokenReady(){
@@ -2183,11 +2183,18 @@ function trySilentDriveToken(cb){
       callback:function(resp){
         if(resp&&resp.access_token){
           driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000;
-          driveUserInfo=null; saveDriveToken(); updateSigninBadge(); cb(true);
+          driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); cb(true);
         } else { cb(false); }
       },
       error_callback:function(){ cb(false); } });
     sc.requestAccessToken({prompt:""}); }); }
+function scheduleTokenRefresh(){
+  var ms=driveTokenExp-Date.now()-600000; /* silent-refresh 10 min before expiry */
+  if(ms<60000) ms=60000;
+  setTimeout(function(){
+    if(driveToken&&Date.now()<driveTokenExp) return;
+    if(!(appSettings.drive&&appSettings.drive.clientId)) return;
+    trySilentDriveToken(function(ok){ if(ok) scheduleTokenRefresh(); }); },ms); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
   toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }
@@ -2790,7 +2797,8 @@ function boot(){ wireUI(); loadDriveToken(); var oauthReturn=handleOAuthRedirect
         else { showAuthGate(); setTimeout(afterDriveTokenReady,80); } }
       else if(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp){ publishAllUnpublished(); }
       else if(appSettings.drive.clientId&&driveEverSignedIn){ trySilentDriveToken(function(ok){ updateSigninBadge();
-          if(appSettings.drive.folderId&&ok) publishAllUnpublished(); else showAuthGate(); }); }
+          if(ok){ if(appSettings.drive.folderId) publishAllUnpublished(); scheduleTokenRefresh(); }
+          else if(!appSettings.drive.folderId) showAuthGate(); }); }
       else if(appSettings.drive.clientId) showAuthGate();
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }

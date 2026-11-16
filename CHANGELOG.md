@@ -10,6 +10,29 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.80] — Stop hourly sign-in prompts; proactive token refresh
+
+### Fixed
+- **Hourly sign-in overlay**: the full-screen auth gate was shown at every page
+  load whenever the OAuth token had expired and silent re-auth failed — even for
+  users who already have a folder connected and just want to read maps. Now the
+  gate only appears for initial setup (no folder configured yet); returning users
+  see the sign-in badge instead and are prompted only when they actually need to
+  push a change.
+- **Root cause (iOS Safari)**: ITP (Intelligent Tracking Prevention) blocks
+  third-party cookies, so `prompt:""` silent re-auth frequently fails on mobile
+  Safari — that's why the gate kept appearing. The two fixes above address both
+  the symptom and the frequency.
+
+### Added
+- **Proactive token refresh** (`scheduleTokenRefresh`): after any successful
+  token acquisition, a timer fires 10 minutes before expiry and silently refreshes
+  in the background. As long as the page is open and the Google session is active,
+  the token never expires during a session. The timer chains itself on each
+  successful refresh.
+
+---
+
 ## [0.9.79] — Smooth heading cone interpolation
 
 ### Added
