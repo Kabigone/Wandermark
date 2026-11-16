@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.78] — Bigger heading cone; fix version label
+
+### Fixed
+- **Version label** in the ⋯ menu was stuck showing "0.9.74" — `WANDERMARK_VERSION`
+  constant was never updated past that; now correctly shows the current version.
+
+### Changed
+- **Heading cone** is 33% larger (80×80 px SVG, up from 60×60), making it easier
+  to see while navigating on mobile.
+
+---
+
 ## [0.9.77] — Fix location tracking and heading fan
 
 ### Fixed

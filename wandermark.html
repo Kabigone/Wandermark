@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.77
+  VERSION: 0.9.78
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -762,7 +762,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.74";
+var WANDERMARK_VERSION="0.9.78";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1473,11 +1473,11 @@ function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePo
 
 function meSvgHtml(heading){
   var h=typeof heading==="number"&&!isNaN(heading);
-  var fan=h?'<path d="M30,30 L12,12 A25,25 0 0,1 48,12 Z" fill="rgba(66,133,244,.38)"/>':"" ;
+  var fan=h?'<path d="M40,40 L16,16 A33,33 0 0,1 64,16 Z" fill="rgba(66,133,244,.38)"/>':"" ;
   var rot=h?Math.round(heading):0;
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">'
-    +'<g transform="rotate('+rot+',30,30)">'+fan+'</g>'
-    +'<circle cx="30" cy="30" r="7" fill="#4285F4" stroke="#fff" stroke-width="2.5"/>'
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">'
+    +'<g transform="rotate('+rot+',40,40)">'+fan+'</g>'
+    +'<circle cx="40" cy="40" r="8" fill="#4285F4" stroke="#fff" stroke-width="2.5"/>'
     +'</svg>'; }
 function truncLabel(s){ return s&&s.length>22?s.slice(0,20)+'…':s||''; }
 function updateLeafletLabelVisibility(){
@@ -1527,7 +1527,7 @@ var LeafletEngine={
   showMe:function(loc){
     var hasH=typeof loc.heading==="number"&&!isNaN(loc.heading);
     var icon=hasH
-      ?L.divIcon({className:"",html:meSvgHtml(loc.heading),iconSize:[60,60],iconAnchor:[30,30]})
+      ?L.divIcon({className:"",html:meSvgHtml(loc.heading),iconSize:[80,80],iconAnchor:[40,40]})
       :L.divIcon({className:"",html:'<div class="mk-me"></div>',iconSize:[18,18],iconAnchor:[9,9]});
     if(leafletMe){ leafletMe.setLatLng([loc.lat,loc.lng]); leafletMe.setIcon(icon); }
     else { leafletMe=L.marker([loc.lat,loc.lng],{icon:icon,zIndexOffset:1000,interactive:false}).addTo(leafletMap); } },
@@ -1623,7 +1623,7 @@ var GoogleEngine={
   showMe:function(loc){
     var svg=meSvgHtml(loc.heading);
     var icon={url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),
-      scaledSize:new google.maps.Size(60,60),anchor:new google.maps.Point(30,30)};
+      scaledSize:new google.maps.Size(80,80),anchor:new google.maps.Point(40,40)};
     if(gMe){ gMe.setPosition({lat:loc.lat,lng:loc.lng}); gMe.setIcon(icon); }
     else { gMe=new google.maps.Marker({position:{lat:loc.lat,lng:loc.lng},map:googleMap,
       zIndex:1000,clickable:false,icon:icon}); } },
