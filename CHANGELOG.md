@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.76] — Smooth zoom: embedded labels instead of Leaflet tooltips
+
+### Changed
+- **Leaflet engine**: place-name labels are now embedded directly in the marker
+  `divIcon` HTML as a `<span class="mk-lbl">` rather than bound as permanent
+  Leaflet tooltips. Because the label is part of the marker element, it moves
+  with the CSS transform Leaflet applies during zoom animation — zero JS runs
+  per animation frame, eliminating the zoom jank caused by Leaflet repositioning
+  each tooltip on every frame.
+- Collision-detection logic (`updateLeafletLabelVisibility`) updated to read label
+  elements via `querySelector('.mk-lbl')` instead of the tooltip API.
+- Removed the now-unused `.leaflet-tooltip.place-label` / `::before` CSS rules.
+
+---
+
 ## [0.9.75] — Heading fan on "you are here" dot
 
 ### Added

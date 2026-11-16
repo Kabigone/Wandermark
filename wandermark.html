@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.74
+  VERSION: 0.9.76
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -507,8 +507,7 @@
   .mk-ref{width:18px;height:18px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 3px rgba(44,114,108,.4),0 2px 5px rgba(0,0,0,.3)}
   .leaflet-popup-content-wrapper{border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
   .leaflet-popup-content{margin:13px 14px;font-family:"Hanken Grotesk",sans-serif}
-  .leaflet-tooltip.place-label{background:rgba(255,255,255,.88);border:none;box-shadow:0 1px 3px rgba(0,0,0,.18);padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;color:#333;white-space:nowrap;pointer-events:none;display:none}
-  .leaflet-tooltip.place-label::before{display:none}
+  .mk-lbl{position:absolute;left:34px;top:1px;white-space:nowrap;font-size:11px;font-weight:600;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;display:none;background:rgba(255,255,255,.85);border-radius:9px;padding:1px 5px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
   .g-place-label{position:absolute;font-size:11px;font-weight:600;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap;pointer-events:none;padding:1px 5px;background:rgba(255,255,255,.85);border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
   .pop{width:252px}
   .pop-photo{width:100%;height:118px;background-size:cover;background-position:center;border-radius:9px;margin-bottom:8px}
@@ -1477,16 +1476,16 @@ function updateLeafletLabelVisibility(){
   if(!leafletMap) return;
   var zoom=leafletMap.getZoom();
   var ids=Object.keys(markers);
-  if(zoom<13){ ids.forEach(function(id){ var tt=markers[id].getTooltip&&markers[id].getTooltip(); var el=tt&&tt.getElement&&tt.getElement(); if(el) el.style.display=''; }); return; }
+  if(zoom<13){ ids.forEach(function(id){ var mkel=markers[id].getElement&&markers[id].getElement(); var el=mkel&&mkel.querySelector('.mk-lbl'); if(el) el.style.display='none'; }); return; }
   var placed=[];
   ids.forEach(function(id){
-    var mk=markers[id]; var tt=mk.getTooltip&&mk.getTooltip(); var el=tt&&tt.getElement&&tt.getElement(); if(!el) return;
+    var mk=markers[id]; var mkel=mk.getElement&&mk.getElement(); var el=mkel&&mkel.querySelector('.mk-lbl'); if(!el) return;
     var pt=leafletMap.latLngToLayerPoint(mk.getLatLng());
-    var name=tt.getContent()||''; var w=Math.max(name.length*7+12,20); var h=18;
+    var name=el.textContent||''; var w=Math.max(name.length*7+12,20); var h=18;
     var lx=pt.x+18, ly=pt.y-29;
     var ok=true;
     for(var i=0;i<placed.length;i++){ var p=placed[i]; if(lx<p.x+p.w+6&&lx+w>p.x-6&&ly<p.y+p.h+6&&ly+h>p.y-6){ ok=false; break; } }
-    el.style.display=ok?'block':'';
+    el.style.display=ok?'block':'none';
     if(ok) placed.push({x:lx,y:ly,w:w,h:h});
   });
 }
@@ -1510,8 +1509,7 @@ var LeafletEngine={
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
   refresh:function(list){ leafletLayer.clearLayers(); markers={};
     list.forEach(function(p){ var c=catById(p.categoryId);
-      var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div class="mk-pin" style="--c:'+c.color+'"><span>'+placeIcon(p)+"</span></div>",iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
-      mk.bindTooltip(truncLabel(p.name),{permanent:true,direction:"right",className:"place-label",opacity:1,offset:[4,0]});
+      var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div style="position:relative"><div class="mk-pin" style="--c:'+c.color+'"><span>'+placeIcon(p)+'</span></div><span class="mk-lbl">'+esc(truncLabel(p.name))+'</span></div>',iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
       mk.bindPopup(function(){ return makePopupNode(p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[p.id]=mk; });
     updateLeafletLabelVisibility();
     if(leafletRef){ leafletMap.removeLayer(leafletRef); leafletRef=null; }
