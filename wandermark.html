@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.80
+  VERSION: 0.9.81
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -762,7 +762,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.80";
+var WANDERMARK_VERSION="0.9.81";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2263,7 +2263,12 @@ function pollDriveIfDue(minGapMs){ var d=appSettings.drive||{};
   else syncDrive({silent:true}); }
 function startDrivePolling(){
   setInterval(function(){ pollDriveIfDue(90000); },120000);
-  document.addEventListener("visibilitychange",function(){ if(!document.hidden) pollDriveIfDue(45000); });
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden) return;
+    pollDriveIfDue(45000);
+    /* If token expired while page was suspended/frozen, refresh silently before next sync */
+    if((!driveToken||Date.now()>=driveTokenExp)&&appSettings.drive&&appSettings.drive.clientId&&driveEverSignedIn)
+      trySilentDriveToken(function(ok){ if(ok) scheduleTokenRefresh(); }); });
   window.addEventListener("focus",function(){ pollDriveIfDue(45000); }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }

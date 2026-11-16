@@ -10,6 +10,17 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.81] — Re-auth when switching back to the page
+
+### Fixed
+- **On page-visible** (`visibilitychange`): if the Drive token expired while the
+  page was suspended / frozen in the background (iOS kills and freezes tabs
+  aggressively), a silent re-auth is now attempted immediately as the page
+  becomes visible again — before the next sync poll runs. The sign-in badge
+  updates to reflect the result. No auth gate shown.
+
+---
+
 ## [0.9.80] — Stop hourly sign-in prompts; proactive token refresh
 
 ### Fixed
