@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.78
+  VERSION: 0.9.79
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -762,7 +762,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.78";
+var WANDERMARK_VERSION="0.9.79";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1479,6 +1479,27 @@ function meSvgHtml(heading){
     +'<g transform="rotate('+rot+',40,40)">'+fan+'</g>'
     +'<circle cx="40" cy="40" r="8" fill="#4285F4" stroke="#fff" stroke-width="2.5"/>'
     +'</svg>'; }
+var meDisplayHeading=null,meTargetHeading=null,meAnimFrame=null;
+function startMeAnim(){
+  if(meAnimFrame||meTargetHeading===null) return;
+  function step(){
+    meAnimFrame=null; if(meTargetHeading===null) return;
+    var delta=meTargetHeading-meDisplayHeading;
+    if(delta>180) delta-=360; if(delta<-180) delta+=360;
+    if(Math.abs(delta)<0.3){ meDisplayHeading=meTargetHeading; return; }
+    meDisplayHeading+=delta*0.12;
+    if(meDisplayHeading>=360) meDisplayHeading-=360;
+    if(meDisplayHeading<0) meDisplayHeading+=360;
+    if(ui.engine==="osm"&&leafletMe){
+      var el=leafletMe.getElement&&leafletMe.getElement();
+      var g=el&&el.querySelector("svg g");
+      if(g) g.setAttribute("transform","rotate("+meDisplayHeading.toFixed(1)+",40,40)"); }
+    else if(gMe){
+      var svg=meSvgHtml(meDisplayHeading);
+      gMe.setIcon({url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),
+        scaledSize:new google.maps.Size(80,80),anchor:new google.maps.Point(40,40)}); }
+    meAnimFrame=requestAnimationFrame(step); }
+  meAnimFrame=requestAnimationFrame(step); }
 function truncLabel(s){ return s&&s.length>22?s.slice(0,20)+'…':s||''; }
 function updateLeafletLabelVisibility(){
   if(!leafletMap) return;
@@ -1526,11 +1547,21 @@ var LeafletEngine={
   fit:function(places){ if(!places.length) return; leafletMap.fitBounds(L.latLngBounds(places.map(function(p){return [p.lat,p.lng];})).pad(.18),{maxZoom:15}); },
   showMe:function(loc){
     var hasH=typeof loc.heading==="number"&&!isNaN(loc.heading);
-    var icon=hasH
-      ?L.divIcon({className:"",html:meSvgHtml(loc.heading),iconSize:[80,80],iconAnchor:[40,40]})
-      :L.divIcon({className:"",html:'<div class="mk-me"></div>',iconSize:[18,18],iconAnchor:[9,9]});
-    if(leafletMe){ leafletMe.setLatLng([loc.lat,loc.lng]); leafletMe.setIcon(icon); }
-    else { leafletMe=L.marker([loc.lat,loc.lng],{icon:icon,zIndexOffset:1000,interactive:false}).addTo(leafletMap); } },
+    if(hasH){
+      if(meDisplayHeading===null) meDisplayHeading=loc.heading;
+      meTargetHeading=loc.heading;
+    } else {
+      if(meAnimFrame){ cancelAnimationFrame(meAnimFrame); meAnimFrame=null; }
+      meDisplayHeading=null; meTargetHeading=null; }
+    var wantFan=hasH, hasFan=leafletMe&&leafletMe.getIcon&&leafletMe.getIcon().options.iconSize[0]===80;
+    if(!leafletMe||wantFan!==hasFan){
+      var icon=wantFan
+        ?L.divIcon({className:"",html:meSvgHtml(meDisplayHeading),iconSize:[80,80],iconAnchor:[40,40]})
+        :L.divIcon({className:"",html:'<div class="mk-me"></div>',iconSize:[18,18],iconAnchor:[9,9]});
+      if(leafletMe){ leafletMe.setLatLng([loc.lat,loc.lng]); leafletMe.setIcon(icon); }
+      else { leafletMe=L.marker([loc.lat,loc.lng],{icon:icon,zIndexOffset:1000,interactive:false}).addTo(leafletMap); }
+    } else { leafletMe.setLatLng([loc.lat,loc.lng]); }
+    if(hasH) startMeAnim(); },
   panTo:function(loc){ if(leafletMap) leafletMap.panTo([loc.lat,loc.lng]); },
   panToZoom:function(loc,z){ if(leafletMap) leafletMap.setView([loc.lat,loc.lng],Math.max(leafletMap.getZoom(),z)); },
   resize:function(){ if(leafletMap) leafletMap.invalidateSize(); },
@@ -1621,12 +1652,20 @@ var GoogleEngine={
   open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); } },
   fit:function(places){ if(!places.length) return; var b=new google.maps.LatLngBounds(); places.forEach(function(p){ b.extend({lat:p.lat,lng:p.lng}); }); googleMap.fitBounds(b,60); if(places.length===1) googleMap.setZoom(15); },
   showMe:function(loc){
-    var svg=meSvgHtml(loc.heading);
+    var hasH=typeof loc.heading==="number"&&!isNaN(loc.heading);
+    if(hasH){
+      if(meDisplayHeading===null) meDisplayHeading=loc.heading;
+      meTargetHeading=loc.heading;
+    } else {
+      if(meAnimFrame){ cancelAnimationFrame(meAnimFrame); meAnimFrame=null; }
+      meDisplayHeading=null; meTargetHeading=null; }
+    var svg=meSvgHtml(hasH?meDisplayHeading:loc.heading);
     var icon={url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),
       scaledSize:new google.maps.Size(80,80),anchor:new google.maps.Point(40,40)};
     if(gMe){ gMe.setPosition({lat:loc.lat,lng:loc.lng}); gMe.setIcon(icon); }
     else { gMe=new google.maps.Marker({position:{lat:loc.lat,lng:loc.lng},map:googleMap,
-      zIndex:1000,clickable:false,icon:icon}); } },
+      zIndex:1000,clickable:false,icon:icon}); }
+    if(hasH) startMeAnim(); },
   panTo:function(loc){ if(googleMap) googleMap.panTo({lat:loc.lat,lng:loc.lng}); },
   panToZoom:function(loc,z){ if(googleMap){ googleMap.panTo({lat:loc.lat,lng:loc.lng}); if(googleMap.getZoom()<z) googleMap.setZoom(z); } },
   resize:function(){},
@@ -1711,7 +1750,7 @@ function enrichFromGoogle(){ if(ui.engine!=="google"||!placesService){ toast("Sw
 var Engine=LeafletEngine;
 
 /* ===================== engine switching ===================== */
-function teardownMap(){ ui.mapReady=false;
+function teardownMap(){ if(meAnimFrame){ cancelAnimationFrame(meAnimFrame); meAnimFrame=null; } meDisplayHeading=null; meTargetHeading=null; ui.mapReady=false;
   try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; leafletMe=null; } }catch(e){}
   Object.keys(gLabels).forEach(function(k){ try{gLabels[k].setMap(null);}catch(e){} }); googleMap=null; gInfo=null; gRef=null; gMe=null; markers={}; gMarkers={}; gLabels={}; GoogleLabelOverlay=null;
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }

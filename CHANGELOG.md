@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.79] — Smooth heading cone interpolation
+
+### Added
+- **Smooth cone rotation**: the heading fan now interpolates toward the GPS
+  heading each animation frame (exponential ease, ~12% of remaining delta per
+  frame) instead of jumping on each `watchPosition` update (~1 Hz). The
+  displayed angle glides smoothly to the new reading.
+- Leaflet engine: DOM-mutates only the `<g transform>` attribute each frame —
+  no icon swap, no marker re-creation, zero Leaflet API calls during animation.
+- Google Maps engine: calls `setIcon` with an updated data URI each frame while
+  animating; stops the loop once within 0.3° of target.
+- Animation state (`meDisplayHeading`, `meTargetHeading`, `meAnimFrame`) is
+  reset cleanly when switching map engines or when heading becomes unavailable.
+
+---
+
 ## [0.9.78] — Bigger heading cone; fix version label
 
 ### Fixed
