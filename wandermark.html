@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.76
+  VERSION: 0.9.77
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -1471,6 +1471,14 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   return node; }
 function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
+function meSvgHtml(heading){
+  var h=typeof heading==="number"&&!isNaN(heading);
+  var fan=h?'<path d="M30,30 L12,12 A25,25 0 0,1 48,12 Z" fill="rgba(66,133,244,.38)"/>':"" ;
+  var rot=h?Math.round(heading):0;
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">'
+    +'<g transform="rotate('+rot+',30,30)">'+fan+'</g>'
+    +'<circle cx="30" cy="30" r="7" fill="#4285F4" stroke="#fff" stroke-width="2.5"/>'
+    +'</svg>'; }
 function truncLabel(s){ return s&&s.length>22?s.slice(0,20)+'…':s||''; }
 function updateLeafletLabelVisibility(){
   if(!leafletMap) return;
@@ -1712,17 +1720,17 @@ function startEngine(kind){ teardownMap();
   Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); if(ui.myLocation) Engine.showMe(ui.myLocation); }); }
 function locateMe(){ if(!navigator.geolocation){ toast("Location isn’t available in this browser"); return; }
   toast("Finding your location…");
-  navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+  navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude,heading:pos.coords.heading};
       ui.myLocation=loc; if(ui.mapReady){ Engine.showMe(loc); Engine.panToZoom(loc,LOCATE_ZOOM); }
       startLocationWatch(); },
-    function(){ toast("Couldn’t get your location"); },
-    {enableHighAccuracy:true,maximumAge:30000,timeout:10000}); }
+    function(err){ toast(err&&err.code===1?"Location permission denied — check Settings":"Couldn’t get your location"); },
+    {enableHighAccuracy:false,maximumAge:30000,timeout:10000}); }
 /* Keep the "you are here" dot following your actual position, like Google
    Maps does, instead of freezing at the spot you happened to be in when
    the dot first appeared. */
 var locationWatchId=null;
 function startLocationWatch(){ if(!navigator.geolocation||locationWatchId!==null) return;
-  locationWatchId=navigator.geolocation.watchPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+  locationWatchId=navigator.geolocation.watchPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude,heading:pos.coords.heading};
       ui.myLocation=loc; if(ui.mapReady) Engine.showMe(loc); },
     function(){}, {enableHighAccuracy:true,maximumAge:30000,timeout:27000}); }
 /* Quietly start the "you are here" dot on load, without panning/zooming or

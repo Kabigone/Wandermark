@@ -10,6 +10,27 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.77] — Fix location tracking and heading fan
+
+### Fixed
+- **`meSvgHtml` was never defined** — the function was called by `showMe` for the
+  heading fan (v0.9.75) but its definition was missing. When a device reports a
+  heading while moving, `showMe` would throw and silently stop location updates.
+  Definition added.
+- **`getCurrentPosition` error message** now says "Location permission denied —
+  check Settings" when the browser returns `PERMISSION_DENIED` (error code 1),
+  rather than the generic "Couldn't get your location", so iOS/Android users know
+  where to look.
+- Switched `getCurrentPosition` to `enableHighAccuracy:false` so the first fix
+  arrives quickly from WiFi/cell, with the `watchPosition` doing the GPS refine.
+
+### Changed
+- Both `getCurrentPosition` and `watchPosition` callbacks now pass
+  `heading: pos.coords.heading` through to `showMe`, completing the heading-fan
+  feature properly.
+
+---
+
 ## [0.9.76] — Smooth zoom: embedded labels instead of Leaflet tooltips
 
 ### Changed
