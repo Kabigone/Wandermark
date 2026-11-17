@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.85
+  VERSION: 0.9.86
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -487,6 +487,7 @@
   .chips{display:flex;flex-wrap:wrap;gap:7px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;font-size:12.5px;font-weight:600;border:1.5px solid var(--line-2);background:#fffdf6;transition:.12s;user-select:none}
   .chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.chip .chip-em{font-size:14px;line-height:1;flex:none}
   .chip .ct{opacity:.55}
   .chip.off{opacity:.4;filter:grayscale(.5)}
   .chip:hover{transform:translateY(-1px)}
@@ -783,7 +784,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.85";
+var WANDERMARK_VERSION="0.9.86";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1873,7 +1874,7 @@ function updateFilterBadge(){
 function renderCatChips(){ var el=document.getElementById("catChips"); el.innerHTML="";
   state.categories.forEach(function(cRaw){ var c=catById(cRaw.id); var n=state.places.filter(function(p){return p.categoryId===cRaw.id;}).length; var active=ui.activeCats[cRaw.id]!==false;
     var d=document.createElement("div"); d.className="chip"+(active?"":" off");
-    d.innerHTML='<span class="dot" style="background:'+c.color+'"></span>'+esc(c.name)+' <span class="ct">'+n+"</span>";
+    d.innerHTML='<span class="chip-em">'+c.emoji+'</span>'+esc(c.name)+' <span class="ct">'+n+"</span>";
     d.onclick=function(){ ui.activeCats[c.id]=!active; renderAll(); }; el.appendChild(d); }); }
 function renderAnchorSel(){ var sel=document.getElementById("anchorSel"),cur=sel.value;
   var html='<option value="">— none —</option>';

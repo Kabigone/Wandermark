@@ -10,6 +10,14 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.86] — Category legend shows emoji instead of color dot
+
+### Changed
+- **Category chips** (sidebar legend) now display the category emoji instead of a
+  small color dot, making them easier to scan at a glance.
+
+---
+
 ## [0.9.85] — Fix: category changes not saved to Drive
 
 ### Fixed
