@@ -10,6 +10,14 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.85] — Fix: category changes not saved to Drive
+
+### Fixed
+- **Category icon/name/color edits** were saved to localStorage but not marked
+  `dirty`, so the next Drive sync would download the old version and overwrite the
+  change. Added `markDirty()` to all four category operations: edit, add, merge,
+  and delete. Changes now auto-push to Drive the same way place edits do.
+
 ## [0.9.84] — Stop sign-in prompts when switching back to the tab
 
 ### Fixed

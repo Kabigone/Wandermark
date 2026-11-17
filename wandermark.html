@@ -7,6 +7,9 @@
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.85 Fix category changes not persisting to Drive: markDirty() was
+           missing from all four category operations (edit, add, merge, delete),
+           so Drive sync would overwrite local changes on next poll.
     0.9.84 Stop sign-in prompts on tab-foreground: visibilitychange and sync
            interval no longer call requestAccessToken without a user gesture
            (FedCM bottom sheet on Android Chrome 115+). They set needsReAuth
@@ -2358,7 +2361,7 @@ function categoryModal(){ var editable=!ui.readOnly;
   buildIconPicker(pe,chosenE,EMOJIS,function(){});
   var pc=modal.querySelector("#ncColor"),chosenC={v:PALETTE[0]};
   PALETTE.forEach(function(col,i){ var b=document.createElement("button"); b.style.background=col; if(i===0)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
-  modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); renderAll(); categoryModal(); toast("Category added"); };
+  modal.querySelector("#ncAdd").onclick=function(){ var nm=modal.querySelector("#ncName").value.trim(); if(!nm){ toast("Name your category"); return; } state.categories.splice(state.categories.length-1,0,{id:uid(),name:nm,color:chosenC.v,emoji:chosenE.v}); markDirty(); renderAll(); categoryModal(); toast("Category added"); };
   modal.querySelectorAll("[data-edit]").forEach(function(row){ row.onclick=function(){ editCategoryModal(row.getAttribute("data-edit")); }; }); }
 
 function editCategoryModal(id){ if(ui.readOnly) return; var raw=catRaw(id), c=catById(id);
@@ -2378,14 +2381,14 @@ function editCategoryModal(id){ if(ui.readOnly) return; var raw=catRaw(id), c=ca
   buildIconPicker(pe,chosenE,EMOJIS,function(){});
   var pc=modal.querySelector("#ecColor"),chosenC={v:c.color};
   (PALETTE.indexOf(c.color)<0?[c.color].concat(PALETTE):PALETTE).forEach(function(col){ var b=document.createElement("button"); b.style.background=col; if(col===c.color)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
-  modal.querySelector("#ecSave").onclick=function(){ raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; renderAll(); categoryModal(); toast("Category updated"); };
+  modal.querySelector("#ecSave").onclick=function(){ raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; markDirty(); renderAll(); categoryModal(); toast("Category updated"); };
   modal.querySelector("#ecMergeBtn").onclick=function(){ var tid=modal.querySelector("#ecMerge").value; if(!tid){ toast("Pick a category to merge into"); return; } if(state.categories.length<=1){ toast("Keep at least one category"); return; }
     var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=tid; });
-    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast("Merged "+moved+" place(s) into "+catById(tid).name); };
+    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; markDirty(); renderAll(); categoryModal(); toast("Merged "+moved+" place(s) into "+catById(tid).name); };
   modal.querySelector("#ecDel").onclick=function(){ if(state.categories.length<=1){ toast("Keep at least one category"); return; }
     var fb=state.categories[state.categories.length-1].id===id?state.categories[0].id:state.categories[state.categories.length-1].id;
     var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=fb; });
-    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; renderAll(); categoryModal(); toast(moved?("Moved "+moved+" place(s) to "+catById(fb).name):"Category removed"); }; }
+    state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; markDirty(); renderAll(); categoryModal(); toast(moved?("Moved "+moved+" place(s) to "+catById(fb).name):"Category removed"); }; }
 
 function renameMapModal(id){ var m=LIB.maps[id];
   openModal('<div class="mh"><div><h2>Edit map</h2><p>Rename this map or change its type.</p></div><button class="close">✕</button></div>'+
