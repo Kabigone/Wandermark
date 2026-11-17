@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.86
+  VERSION: 0.9.87
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -784,7 +784,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.86";
+var WANDERMARK_VERSION="0.9.87";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2066,7 +2066,7 @@ function driveDeleteFile(fileId,cb){ if(!driveToken||Date.now()>=driveTokenExp){
   fetch("https://www.googleapis.com/drive/v3/files/"+fileId,{method:"DELETE",headers:{Authorization:"Bearer "+driveToken}})
     .then(function(r){ if(cb) cb(r.status===204||r.status===200); }).catch(function(){ if(cb) cb(false); }); }
 /* ----- Google sign-in + write-back (OAuth, drive.file scope) ----- */
-var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null, driveEverSignedIn=false;
+var driveToken="", driveTokenExp=0, gisTokenClient=null, pendingTokenCb=null, driveUserInfo=null, driveEverSignedIn=false, needsReAuth=false;
 var DRIVE_TOKEN_KEY="wandermark:driveToken";
 function saveDriveToken(){ try{ if(window.localStorage) localStorage.setItem(DRIVE_TOKEN_KEY,JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){} }
 function loadDriveToken(){ try{ var raw=window.localStorage&&localStorage.getItem(DRIVE_TOKEN_KEY); if(!raw) return;
@@ -2832,10 +2832,8 @@ function boot(){ wireUI(); loadDriveToken(); var oauthReturn=handleOAuthRedirect
         /* Just came back from OAuth redirect — token is fresh. Skip straight to folder connection. */
         if(appSettings.drive.folderId){ publishAllUnpublished(); }
         else { showAuthGate(); setTimeout(afterDriveTokenReady,80); } }
-      else if(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp){ publishAllUnpublished(); }
-      else if(appSettings.drive.clientId&&driveEverSignedIn){ trySilentDriveToken(function(ok){ updateSigninBadge();
-          if(ok){ if(appSettings.drive.folderId) publishAllUnpublished(); scheduleTokenRefresh(); }
-          else if(!appSettings.drive.folderId) showAuthGate(); }); }
+      else if(driveToken&&Date.now()<driveTokenExp){ scheduleTokenRefresh(); if(appSettings.drive.folderId) publishAllUnpublished(); }
+      else if(appSettings.drive.clientId&&driveEverSignedIn){ needsReAuth=true; updateSigninBadge(); }
       else if(appSettings.drive.clientId) showAuthGate();
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }

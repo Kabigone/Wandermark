@@ -10,6 +10,21 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.87] — Fix: stop sign-in prompt on every page open
+
+### Fixed
+- **Sign-in prompt on page load**: at boot, when a Drive token had expired,
+  `requestAccessToken` was called from inside a Promise callback (not a user
+  gesture). Android Chrome's FedCM treats this as a non-gesture call and shows
+  a bottom-sheet sign-in prompt every time the page is opened fresh. Now the
+  boot path simply sets the pulsing 🔑 badge (`needsReAuth=true`) and waits;
+  the existing on-tap re-auth listener handles the actual token request the next
+  time the user taps anything — which IS a user gesture, so Chrome stays quiet.
+- Also properly schedule the proactive token refresh (`scheduleTokenRefresh`)
+  when a still-valid token is found at boot.
+
+---
+
 ## [0.9.86] — Category legend shows emoji instead of color dot
 
 ### Changed
