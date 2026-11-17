@@ -10,6 +10,29 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.84] — Stop sign-in prompts when switching back to the tab
+
+### Fixed
+- **Root cause identified**: `visibilitychange` and the Drive sync interval were
+  both calling `requestAccessToken` directly — no user gesture. On Android Chrome
+  115+, that triggers a FedCM bottom sheet ("Sign in as…") every time the tab is
+  foregrounded with an expired token, which is what the user experienced as being
+  "asked to sign in."
+- **`visibilitychange`**: no longer calls `requestAccessToken`. When the token is
+  expired on tab-foreground, sets `needsReAuth` and shows the pulsing badge instead.
+  The on-tap listener (v0.9.83) handles re-auth silently on the next user tap.
+- **Drive sync interval** (`pollDriveIfDue`): no longer tries to silently refresh
+  the token from a timer. When expired, sets `needsReAuth` and skips that sync cycle.
+  Sync resumes automatically after the next tap-triggered re-auth.
+- **Auto-push** (`runAutoPush`): when `needsReAuth` is already set, skips directly
+  to the nudge toast rather than making another `requestAccessToken` call that
+  would also trigger FedCM.
+
+The only places that now call `requestAccessToken` are: boot (page load, treated
+as user-initiated navigation), `scheduleTokenRefresh` (fires before expiry while
+the page is active and the token has not yet expired), and the on-tap re-auth
+listener (genuine user gesture).
+
 ## [0.9.83] — Reduce hourly sign-in prompts on Android Chrome
 
 ### Changed

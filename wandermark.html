@@ -7,6 +7,10 @@
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.84 Stop sign-in prompts on tab-foreground: visibilitychange and sync
+           interval no longer call requestAccessToken without a user gesture
+           (FedCM bottom sheet on Android Chrome 115+). They set needsReAuth
+           instead; the on-tap listener handles re-auth on the next user tap.
     0.9.83 Reduce hourly sign-in prompts: proactive refresh 15 min before expiry
            (was 10) + retry at 5 min; on-tap silent re-auth on next user gesture;
            pulsing sign-in badge when re-auth needed; shorter nudge toast.
@@ -2222,7 +2226,8 @@ function runAutoPush(map){ if(!map||!map.dirty) return;
   var d=appSettings.drive||{}; if(!d.clientId) return;
   if(!d.folderId){ nudgeNoFolder(map); return; }
   if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
-  trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else nudgeSignIn(map); }); }
+  if(needsReAuth){ nudgeSignIn(map); return; } /* wait for user-gesture re-auth instead of forcing a prompt */
+  trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else { needsReAuth=true; updateSigninBadge(); nudgeSignIn(map); } }); }
 function scheduleAutoPush(map){ if(!map) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
   autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; runAutoPush(map); },12000); }
@@ -2272,20 +2277,22 @@ function pollDriveIfDue(minGapMs){ var d=appSettings.drive||{};
   if(!d.folderId||!d.key||document.hidden) return;
   if(Date.now()-lastDriveSyncAt<minGapMs) return;
   lastDriveSyncAt=Date.now();
-  /* If we've signed in before but the ~hour-long token has since lapsed mid-session,
-     silently refresh it first — otherwise this read-only pull would quietly fall back
-     to the public API key, which can't see a privately-shared folder, and updates
-     would stop appearing until the next manual sign-in (looks like "spotty" sync). */
-  if(driveToken && Date.now()>=driveTokenExp && d.clientId) trySilentDriveToken(function(){ syncDrive({silent:true}); });
-  else syncDrive({silent:true}); }
+  /* If the token lapsed, mark needsReAuth and skip the sync — the Drive folder
+     is public-key-readable anyway, and calling requestAccessToken from a timer
+     triggers FedCM prompts on Android Chrome without a user gesture. */
+  if((driveToken||driveEverSignedIn) && Date.now()>=driveTokenExp && d.clientId){
+    needsReAuth=true; updateSigninBadge(); return; }
+  syncDrive({silent:true}); }
 function startDrivePolling(){
   setInterval(function(){ pollDriveIfDue(90000); },120000);
   document.addEventListener("visibilitychange",function(){
     if(document.hidden) return;
     pollDriveIfDue(45000);
-    /* If token expired while page was suspended/frozen, refresh silently before next sync */
-    if((!driveToken||Date.now()>=driveTokenExp)&&appSettings.drive&&appSettings.drive.clientId&&driveEverSignedIn)
-      trySilentDriveToken(function(ok){ if(ok) scheduleTokenRefresh(); }); });
+    /* visibilitychange is not a user gesture on Android Chrome — calling requestAccessToken
+       here triggers a FedCM prompt every time the tab is foregrounded with an expired token.
+       Instead just mark needsReAuth; the on-tap listener retries on the next user gesture. */
+    if((!driveToken||Date.now()>=driveTokenExp)&&appSettings.drive&&appSettings.drive.clientId&&driveEverSignedIn){
+      needsReAuth=true; updateSigninBadge(); } });
   window.addEventListener("focus",function(){ pollDriveIfDue(45000); }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }
