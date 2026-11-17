@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.81
+  VERSION: 0.9.82
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.82 Popup: today-only hours with expand button; larger/card-style read-only
+           notes; editable notes textarea taller (4 rows).
     0.9.74 Silent Drive re-auth: trySilentDriveToken now actually calls GIS
            with prompt="" so an expired token is refreshed automatically
            (no popup) as long as the browser still has a Google session.
@@ -531,6 +533,13 @@
   .hr-d{color:var(--muted)} .hr-row.today .hr-d{color:var(--teal-ink)}
   .hr-t{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .pop .ph{font-size:11.5px;margin:6px 0;padding:6px 8px;background:#f0e8d2;border-radius:7px;line-height:1.5}
+  .hr-block{margin:7px 0}
+  .hr-today-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 9px;background:rgba(44,114,108,.15);border-radius:8px;font-weight:700}
+  .hr-today-row .hr-d-t{min-width:22px;color:var(--teal-ink)}
+  .hr-today-row .hr-t-val{flex:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .hr-exp{font-size:11px;padding:1px 6px;border-radius:6px;border:1px solid var(--line-2);background:#fffdf6;cursor:pointer;color:var(--muted);white-space:nowrap;flex-shrink:0}
+  .hr-block .hr-grid{margin-top:4px}
+  .pop .pop-notes{font-size:14px;margin:8px 0;color:var(--ink);white-space:pre-wrap;line-height:1.5;padding:7px 9px;background:var(--card);border:1px solid var(--line);border-radius:7px}
   .plinks{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .plinks a{font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;text-decoration:none;color:var(--ink-soft)}
   .plinks a:hover{background:#f1e9d4}
@@ -762,7 +771,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.81";
+var WANDERMARK_VERSION="0.9.82";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1414,9 +1423,11 @@ function getFiltered(){
 
 /* ===================== popup ===================== */
 function hoursBlockHtml(p){ if(p.hoursByDay){ var today=todayCode();
+    var todayPair=DAYORDER[0]; for(var i=0;i<DAYORDER.length;i++){if(DAYORDER[i][0]===today){todayPair=DAYORDER[i];break;}}
+    var todayVal=p.hoursByDay[todayPair[0]]||"—";
     var rows=DAYORDER.map(function(pair){ var v=p.hoursByDay[pair[0]]||"—";
       return '<div class="hr-row'+(pair[0]===today?" today":"")+'"><span class="hr-d">'+pair[1]+'</span><span class="hr-t">'+esc(v)+"</span></div>"; }).join("");
-    return '<div class="hr-grid">'+rows+"</div>"; }
+    return '<div class="hr-block"><div class="hr-today-row"><span class="hr-d-t">'+todayPair[1]+'</span><span class="hr-t-val">'+esc(todayVal)+'</span><button type="button" class="hr-exp">▾ Hours</button></div><div class="hr-grid" style="display:none">'+rows+"</div></div>"; }
   if(p.hours) return '<div class="ph">🕑 '+esc(p.hours)+"</div>"; return ""; }
 function metaLineHtml(p){ var bits=[];
   if(p.genre) bits.push(esc(p.genre));
@@ -1440,12 +1451,13 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     (editable?
       '<div class="pprow"><select class="ppcat">'+catOpts+'</select><button type="button" class="ppiconbtn" title="Place icon"></button></div>'+
       '<div class="em-pick ppicon" style="display:none"></div>'+
-      '<textarea class="ppnote" rows="2" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
+      '<textarea class="ppnote" rows="4" placeholder="Notes…">'+esc(p.notes||"")+"</textarea>"+
       '<input class="pptags" placeholder="Tags, comma-separated (e.g. breakfast, テラス席)" value="'+esc((p.tags||[]).join(", "))+'">'+
       '<div class="pacts">'+(opts.add?'<button class="ppsave">＋ Add</button>':'<button class="ppsave">Save</button><button class="ppdel">Delete</button>')+'</div>'
     :
-      (p.notes?'<p style="font-size:13px;margin:8px 0;color:var(--ink-soft);white-space:pre-wrap">'+esc(p.notes)+'</p>':"")+
+      (p.notes?'<p class="pop-notes">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
+  var hrExp=node.querySelector('.hr-exp'); if(hrExp){hrExp.onclick=function(){var g=this.parentNode.nextElementSibling;var o=g.style.display!=='none';g.style.display=o?'none':'';this.textContent=o?'▾ Hours':'▴ Hide';}; }
   if(ui.engine==="google"&&placesService&&p.placeId){
     placesService.getDetails({placeId:p.placeId,fields:["photos"]},function(d,gst){
       if(gst!==google.maps.places.PlacesServiceStatus.OK||!d||!d.photos||!d.photos.length) return;

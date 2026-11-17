@@ -10,6 +10,18 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.82] — Popup: collapsible hours and readable notes
+
+### Changed
+- **Hours grid** now shows only today's hours by default (day label + time, styled
+  with the existing "today" teal highlight). A small "▾ Hours" button expands the
+  full 7-day grid; clicking again collapses it back.
+- **Notes (read-only)**: rendered in a card-style block with slightly larger text
+  (14 px), comfortable padding, and a border — easier to read without scrolling a
+  tiny textarea.
+- **Notes (editable)**: textarea increased from 2 to 4 rows so short notes no
+  longer require scrolling to read while editing.
+
 ## [0.9.81] — Re-auth when switching back to the page
 
 ### Fixed
