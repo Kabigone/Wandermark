@@ -7,6 +7,9 @@
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.83 Reduce hourly sign-in prompts: proactive refresh 15 min before expiry
+           (was 10) + retry at 5 min; on-tap silent re-auth on next user gesture;
+           pulsing sign-in badge when re-auth needed; shorter nudge toast.
     0.9.82 Popup: today-only hours with expand button; larger/card-style read-only
            notes; editable notes textarea taller (4 rows).
     0.9.74 Silent Drive re-auth: trySilentDriveToken now actually calls GIS
@@ -639,6 +642,8 @@
        wrapping long names onto a second line instead of truncating them. */
     #mapBtn{max-width:none;flex:1 1 auto;min-width:0;order:1;white-space:normal;overflow:visible;text-overflow:clip;text-align:left}
     #signinBadge{max-width:none;flex:1 1 100%;order:3;overflow:hidden;text-overflow:ellipsis;text-align:center}
+    #signinBadge.reauth{animation:reauth-pulse 1.8s ease-in-out infinite}
+    @keyframes reauth-pulse{0%,100%{opacity:1}55%{opacity:.45}}
     /* Force the search bar onto its own full-width row — at common phone widths
        (~390-430px) it would otherwise sit alongside the map-name button and the
        sign-in badge and get flex-shrunk down to a bare unusable icon. */
@@ -2209,7 +2214,7 @@ function scheduleTokenRefresh(){
     trySilentDriveToken(function(ok){ if(ok) scheduleTokenRefresh(); }); },ms); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
-  toast("Heads up — “"+map.name+"” has changes that haven’t reached Drive yet, so others can’t see them. Open 🗂️ Map ▾ and tap “Sign in to Google” to push them."); }
+  toast("🔑 “"+map.name+"” has unsynced changes — tap the 🔑 button above to sync."); }
 function nudgeNoFolder(map){ var now=Date.now();
   if(map._lastNoFolderNudge&&now-map._lastNoFolderNudge<600000) return; map._lastNoFolderNudge=now;
   toast("Heads up — “"+map.name+"” isn’t saved anywhere yet, so it only exists in this browser. Open 🗂️ Map ▾ to connect a Drive folder."); }
@@ -2768,6 +2773,10 @@ function wireUI(){
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
   document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); if(ui.linkMode==="collab"&&ui.readOnly){ unlockCollabEdit(); } else autoConnectFolder(function(){ mapsModal(); }); }); };
+  document.addEventListener("click",function(){
+    if(!needsReAuth||!driveEverSignedIn||!appSettings.drive||!appSettings.drive.clientId) return;
+    if(driveToken&&Date.now()<driveTokenExp){ needsReAuth=false; updateSigninBadge(); return; }
+    trySilentDriveToken(function(ok){ updateSigninBadge(); if(ok&&state&&state.dirty) scheduleAutoPush(state); }); },true);
   document.getElementById("roSignIn").onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); unlockCollabEdit(); }); };
 
   var menu=document.getElementById("menu");

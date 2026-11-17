@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.83] — Reduce hourly sign-in prompts on Android Chrome
+
+### Changed
+- **Proactive refresh window** extended from 10 → 15 minutes before token expiry, with
+  an automatic second attempt 5 minutes later if the first fails — two chances to
+  silently renew before the token actually expires.
+- **On-tap re-auth**: when the token expires and the user next taps anything on the
+  map (or anywhere on the page), `requestAccessToken` is retried immediately using
+  that tap as the user gesture. On Android Chrome, a user gesture is required for
+  the GIS popup mechanism; piggybacking on the natural next tap means auth usually
+  completes silently with no visible prompt.
+- **Sign-in badge pulses** when re-auth is needed (subtle opacity animation), so the
+  badge is easy to spot when the automatic tap-triggered retry hasn't fired yet.
+- **Nudge toast** simplified: shorter message pointing to the pulsing badge rather
+  than requiring navigation through the ⋯ menu.
+
 ## [0.9.82] — Popup: collapsible hours and readable notes
 
 ### Changed
