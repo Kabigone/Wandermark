@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.92
+  VERSION: 0.9.93
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.93 Automatic sign-in renewal: silent Google bounce when the tab is
+           foregrounded or idle with an expired token (not just on load), with
+           login_hint; map view restored after the bounce.
     0.9.92 Faster Google Maps zoom: emoji drawn into canvas-batched pin icons;
            name labels hidden while zooming. ✕ button on the main search bar.
     0.9.91 Sign-in back on the OAuth redirect flow everywhere (GIS popup can't
@@ -791,7 +794,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.92";
+var WANDERMARK_VERSION="0.9.93";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1797,7 +1800,9 @@ function teardownMap(){ if(meAnimFrame){ cancelAnimationFrame(meAnimFrame); meAn
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
 function startEngine(kind){ teardownMap();
   if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }
-  Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll(); if(state.places.length) Engine.fit(state.places); if(ui.myLocation) Engine.showMe(ui.myLocation); }); }
+  Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll();
+    var rv=null; try{ rv=JSON.parse(sessionStorage.getItem(RESTORE_VIEW_KEY)||"null"); sessionStorage.removeItem(RESTORE_VIEW_KEY); }catch(e){}
+    if(rv&&typeof rv.lat==="number") Engine.setView(rv); else if(state.places.length) Engine.fit(state.places); if(ui.myLocation) Engine.showMe(ui.myLocation); }); }
 function locateMe(){ if(!navigator.geolocation){ toast("Location isn’t available in this browser"); return; }
   toast("Finding your location…");
   navigator.geolocation.getCurrentPosition(function(pos){ var loc={lat:pos.coords.latitude,lng:pos.coords.longitude,heading:pos.coords.heading};
@@ -2095,12 +2100,13 @@ function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2)
 function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
   /* GIS popup tokens never reach the page under GitHub Pages COOP headers, so use the redirect flow. */
-  save(); startOAuthRedirect(cid); }
+  save(); saveViewForReturn(); startOAuthRedirect(cid); }
 /* ----- signed-in account info, sign out, switch account ----- */
 function fetchDriveUserInfo(cb){ if(!driveToken){ cb(null); return; } if(driveUserInfo){ cb(driveUserInfo); return; }
   fetch("https://www.googleapis.com/drive/v3/about?fields="+encodeURIComponent("user(displayName,emailAddress)"),{headers:{Authorization:"Bearer "+driveToken}})
     .then(function(r){ return r.json(); }).then(function(d){ driveUserInfo=(d&&d.user)||null; cb(driveUserInfo); }).catch(function(){ cb(null); }); }
 function signOutDrive(cb){ var tok=driveToken; driveToken=""; driveTokenExp=0; driveUserInfo=null; clearDriveToken(); updateSigninBadge();
+  try{ localStorage.removeItem(DRIVE_EMAIL_KEY); }catch(e){}
   try{ if(tok&&window.google&&google.accounts&&google.accounts.oauth2) google.accounts.oauth2.revoke(tok,function(){ if(cb) cb(); }); else if(cb) cb(); }catch(e){ if(cb) cb(); } }
 function switchDriveAccount(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
   signOutDrive(function(){ save(); startOAuthRedirect(cid,"select"); }); }
@@ -2143,12 +2149,31 @@ function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.dr
   syncDrive({then:function(){ mapsModal(); }}); }
 /* ----- the "sign in + connect a folder before you can do anything" gate ----- */
 /* ----- OAuth redirect flow (replaces GIS popup, which COOP headers on GitHub Pages block) ----- */
-var OAUTH_REDIRECT_KEY="wm:pendingOAuth";
+var OAUTH_REDIRECT_KEY="wm:pendingOAuth", SILENT_TRY_KEY="wm:silentTry", RESTORE_VIEW_KEY="wm:restoreView", DRIVE_EMAIL_KEY="wandermark:driveEmail", SILENT_ERR_KEY="wandermark:lastSilentErr";
+var lastInteractAt=Date.now();
+function rememberDriveEmail(){ try{ if(localStorage.getItem(DRIVE_EMAIL_KEY)) return; }catch(e){ return; }
+  fetchDriveUserInfo(function(u){ if(u&&u.emailAddress) try{ localStorage.setItem(DRIVE_EMAIL_KEY,u.emailAddress); }catch(e){} }); }
+/* Remember where the map was so a sign-in round trip puts you back in the same spot. */
+function saveViewForReturn(){ try{ if(!ui.mapReady||!Engine) return; var c=Engine.getCenter();
+  var z=ui.engine==="google"?googleMap.getZoom():leafletMap.getZoom();
+  sessionStorage.setItem(RESTORE_VIEW_KEY,JSON.stringify({lat:c.lat,lng:c.lng,z:z})); }catch(e){} }
+/* Google browser tokens last 1 hour and there is no refresh token without a server, so renewal is a
+   prompt=none redirect bounce: no UI if the Google session is alive. Throttled per tab so a session
+   that needs interaction can't cause repeated reloads; skipped while the person is mid-task. */
+function silentRenewIfExpired(){ var d=appSettings.drive||{};
+  if(!d.clientId||!driveEverSignedIn||(driveToken&&Date.now()<driveTokenExp)) return false;
+  if(location.search||ui.readOnly||scrim.classList.contains("on")) return false;
+  var s=document.getElementById("search"); if(s&&s.value) return false;
+  var last=0; try{ last=+sessionStorage.getItem(SILENT_TRY_KEY)||0; }catch(e){}
+  if(Date.now()-last<1800000) return false;
+  try{ sessionStorage.setItem(SILENT_TRY_KEY,String(Date.now())); }catch(e){}
+  saveViewForReturn(); flushSave(); startOAuthRedirect(d.clientId,"silent"); return true; }
 function startOAuthRedirect(cid,mode){
   /* mode: "silent" = prompt=none bounce (no UI; returns an error if Google needs input),
      "select" = account chooser, default = consent first time, quick bounce after that */
   try{ sessionStorage.setItem(OAUTH_REDIRECT_KEY,mode==="silent"?"silent":"1"); }catch(e){}
   var prompt=mode==="silent"?"none":mode==="select"?"select_account":(driveEverSignedIn?"":"consent");
+  var hint=""; if(mode!=="select") try{ hint=localStorage.getItem(DRIVE_EMAIL_KEY)||""; }catch(e){}
   var base=location.href.split("#")[0].split("?")[0];
   location.href="https://accounts.google.com/o/oauth2/v2/auth"
     +"?client_id="+encodeURIComponent(cid)
@@ -2156,7 +2181,8 @@ function startOAuthRedirect(cid,mode){
     +"&response_type=token"
     +"&redirect_uri="+encodeURIComponent(base)
     +"&include_granted_scopes=true"
-    +(prompt?"&prompt="+prompt:""); }
+    +(prompt?"&prompt="+prompt:"")
+    +(hint?"&login_hint="+encodeURIComponent(hint):""); }
 function handleOAuthRedirectReturn(){
   var pending; try{ pending=sessionStorage.getItem(OAUTH_REDIRECT_KEY); }catch(e){}
   var hash=location.hash||"";
@@ -2165,7 +2191,10 @@ function handleOAuthRedirectReturn(){
   if(history.replaceState) history.replaceState(null,"",location.pathname+location.search);
   var tm=hash.match(/[#&]access_token=([^&]+)/), em=hash.match(/[#&]expires_in=([^&]+)/), errm=hash.match(/[#&]error=([^&]+)/);
   if(tm){ driveToken=decodeURIComponent(tm[1]); driveTokenExp=Date.now()+((parseInt((em||[])[1])||3000)*1000)-60000;
-    driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); scheduleTokenRefresh(); return true; }
+    driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); scheduleTokenRefresh();
+    try{ sessionStorage.removeItem(SILENT_TRY_KEY); localStorage.removeItem(SILENT_ERR_KEY); }catch(e){}
+    rememberDriveEmail(); return true; }
+  if(errm&&pending==="silent") try{ localStorage.setItem(SILENT_ERR_KEY,decodeURIComponent(errm[1])); }catch(e){}
   if(errm&&pending!=="silent") setTimeout(function(){ toast("Google sign-in failed: "+decodeURIComponent(errm[1])); },800);
   return false; }
 function afterDriveTokenReady(){
@@ -2200,7 +2229,10 @@ function autoConnectFolder(cb){ if(appSettings.drive.folderId){ cb(); return; }
     .catch(function(){ cb(); }); }
 function updateSigninBadge(){ var b=document.getElementById("signinBadge"); if(!b) return;
   var d=appSettings.drive||{}; var signedIn=!!(driveToken&&Date.now()<driveTokenExp);
-  b.style.display=(d.clientId&&!signedIn)?"":"none"; }
+  b.style.display=(d.clientId&&!signedIn)?"":"none";
+  if(needsReAuth&&!signedIn) b.classList.add("reauth"); else b.classList.remove("reauth");
+  var se=""; try{ se=localStorage.getItem(SILENT_ERR_KEY)||""; }catch(e){}
+  b.title="Sign in to see and edit shared maps"+(se?" (automatic renewal failed: "+se+")":""); }
 function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.kind==="curated"?"curated":"personal"),places:map.places,categories:map.categories}); }
 
 /* ----- seamless sync: auto-push edits quietly, and warn before clobbering others' changes -----
@@ -2288,11 +2320,12 @@ function startDrivePolling(){
   document.addEventListener("visibilitychange",function(){
     if(document.hidden) return;
     pollDriveIfDue(45000);
-    /* visibilitychange is not a user gesture on Android Chrome — calling requestAccessToken
-       here triggers a FedCM prompt every time the tab is foregrounded with an expired token.
-       Instead just mark needsReAuth; the on-tap listener retries on the next user gesture. */
+    /* Coming back to a tab Android kept alive doesn't reload the page, so renew here too. */
     if((!driveToken||Date.now()>=driveTokenExp)&&appSettings.drive&&appSettings.drive.clientId&&driveEverSignedIn){
-      needsReAuth=true; updateSigninBadge(); } });
+      needsReAuth=true; updateSigninBadge(); silentRenewIfExpired(); } });
+  ["pointerdown","keydown","wheel"].forEach(function(t){ document.addEventListener(t,function(){ lastInteractAt=Date.now(); },true); });
+  /* Token ran out while the page sits open and untouched: renew once it has been idle for 2 min. */
+  setInterval(function(){ if(!document.hidden&&Date.now()-lastInteractAt>120000) silentRenewIfExpired(); },30000);
   window.addEventListener("focus",function(){ pollDriveIfDue(45000); }); }
 function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.folderId,key=d.key;
   if(!fid||!key){ if(!opts.silent) toast("Connect a Drive folder first (🗂️ Map ▾)"); return; }
@@ -2825,11 +2858,8 @@ function boot(){ wireUI(); loadDriveToken(); var oauthReturn=handleOAuthRedirect
         /* Just came back from OAuth redirect — token is fresh. Skip straight to folder connection. */
         if(appSettings.drive.folderId){ publishAllUnpublished(); }
         else { showAuthGate(); setTimeout(afterDriveTokenReady,80); } }
-      else if(driveToken&&Date.now()<driveTokenExp){ scheduleTokenRefresh(); if(appSettings.drive.folderId) publishAllUnpublished(); }
-      else if(appSettings.drive.clientId&&driveEverSignedIn){ needsReAuth=true; updateSigninBadge();
-        var lastTry=0; try{ lastTry=+sessionStorage.getItem("wm:silentTry")||0; }catch(e){}
-        if(!location.search&&Date.now()-lastTry>1800000){ try{ sessionStorage.setItem("wm:silentTry",String(Date.now())); }catch(e){}
-          startOAuthRedirect(appSettings.drive.clientId,"silent"); return; } }
+      else if(driveToken&&Date.now()<driveTokenExp){ scheduleTokenRefresh(); rememberDriveEmail(); if(appSettings.drive.folderId) publishAllUnpublished(); }
+      else if(appSettings.drive.clientId&&driveEverSignedIn){ needsReAuth=true; updateSigninBadge(); if(silentRenewIfExpired()) return; }
       else if(appSettings.drive.clientId) showAuthGate();
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }

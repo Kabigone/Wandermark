@@ -10,6 +10,29 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.93] — Automatic sign-in renewal
+
+Google's browser sign-in tokens last one hour, and a server-less app can't get a
+refresh token, so renewal is a `prompt=none` redirect bounce to Google and back
+(no UI while your Google session is alive).
+
+### Changed
+- The silent bounce now also runs when you **come back to a tab Android kept
+  alive** (previously only on a full page load, so returning to the app after
+  putting the phone down always left you signed out), and when the page has sat
+  **idle for 2 minutes** with an expired token.
+- Bounces send `login_hint` with your account email (remembered after sign-in),
+  so Google can renew silently even when the phone has several Google accounts.
+- The map returns to the **same view** after any sign-in round trip instead of
+  re-fitting to all places.
+- Skipped while a dialog is open or the search box has text; throttled to one
+  failed attempt per 30 min per tab so a session that needs input can't cause
+  repeated reloads. A failed renewal's reason shows in the 🔑 badge tooltip.
+- The 🔑 badge pulses when sign-in is needed (the CSS existed; the class was
+  never applied).
+
+---
+
 ## [0.9.92] — Faster Google Maps zoom; clear button on search
 
 ### Changed
