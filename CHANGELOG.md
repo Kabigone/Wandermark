@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.92] — Faster Google Maps zoom; clear button on search
+
+### Changed
+- **Google Maps zoom performance** (the engine the hosted site uses — 0.9.90 only
+  touched the OpenStreetMap engine). Each pin's emoji was a marker `label`, which
+  forces Google to render every pin as its own DOM element. The emoji is now drawn
+  into the pin's SVG icon (cached per color+emoji) and markers are
+  `optimized:true`, so Google batches them onto canvas tiles.
+- Place-name labels are hidden while a zoom is in progress and laid out once when
+  the map settles, instead of every label being repositioned on every frame.
+
+### Added
+- ✕ button in the main "Search a place to add…" bar to clear it in one tap.
+
+---
+
 ## [0.9.91] — Fix: sign-in completely broken (back to redirect flow)
 
 ### Fixed

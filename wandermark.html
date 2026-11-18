@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.91
+  VERSION: 0.9.92
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.92 Faster Google Maps zoom: emoji drawn into canvas-batched pin icons;
+           name labels hidden while zooming. ✕ button on the main search bar.
     0.9.91 Sign-in back on the OAuth redirect flow everywhere (GIS popup can't
            return tokens under GitHub Pages COOP); one silent prompt=none
            bounce on load when the token expired; dirty maps pushed on return.
@@ -525,6 +527,7 @@
   .leaflet-popup-content-wrapper{border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
   .leaflet-popup-content{margin:13px 14px;font-family:"Hanken Grotesk",sans-serif}
   .mk-lbl{position:absolute;left:34px;top:1px;white-space:nowrap;font-size:11px;font-weight:600;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;display:none;background:rgba(255,255,255,.85);border-radius:9px;padding:1px 5px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .wm-zooming .g-place-label{visibility:hidden}
   .g-place-label{position:absolute;font-size:11px;font-weight:600;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap;pointer-events:none;padding:1px 5px;background:rgba(255,255,255,.85);border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
   .pop{width:252px}
   .pop-photo{width:100%;height:118px;background-size:cover;background-position:center;border-radius:9px;margin-bottom:8px}
@@ -676,7 +679,7 @@
     <div class="brand"><span class="glyph">🧭</span><h1>Wandermark</h1></div>
     <button class="btn" id="mapBtn" title="Switch / manage maps">🗂️ Map ▾</button>
     <button class="btn" id="signinBadge" title="Sign in to see and edit shared maps" style="display:none;background:rgba(224,138,47,.18);border-color:#e08a2f;color:#9a5a14;font-weight:700">🔑 Sign in to Google</button>
-    <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off"><div class="results" id="results"></div></div>
+    <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off" style="padding-right:36px"><button type="button" id="searchClear" aria-label="Clear search" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:6px 8px">✕</button><div class="results" id="results"></div></div>
     <div class="hbtns">
       <div class="menu" id="menu">
         <button class="btn" id="menuBtn">⋯</button>
@@ -788,7 +791,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.91";
+var WANDERMARK_VERSION="0.9.92";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1631,8 +1634,12 @@ function updateGoogleLabelVisibility(){
     if(ok) placed.push({x:lx,y:ly,w:w,h:h});
   });
 }
-function gPinIcon(color){ var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/></svg>';
-  return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41),labelOrigin:new google.maps.Point(16,15)}; }
+var gIconCache={};
+function gPinIcon(color,emoji){ var ck=color+"|"+(emoji||""); if(gIconCache[ck]) return gIconCache[ck];
+  var em=String(emoji||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  var svg='<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 41C16 41 30 25 30 15A14 14 0 1 0 2 15C2 25 16 41 16 41Z" fill="'+color+'" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="15" r="10.5" fill="#ffffff" fill-opacity="0.18"/>'
+    +(em?'<text x="16" y="20.5" text-anchor="middle" font-size="15" font-family="Noto Color Emoji,Apple Color Emoji,Segoe UI Emoji,sans-serif">'+em+'</text>':"")+'</svg>';
+  return (gIconCache[ck]={url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(32,42),anchor:new google.maps.Point(16,41)}); }
 var GET_FIELDS=["name","formatted_address","geometry","opening_hours","types","url","photos","website","rating","price_level"];
 function placeFromDetails(d,fallbackName,placeId){ var hours="",hbd=null,photo="";
   if(d.opening_hours&&d.opening_hours.weekday_text){ hours=d.opening_hours.weekday_text.join(" · "); hbd=parseWeekdayText(d.opening_hours.weekday_text); }
@@ -1640,6 +1647,7 @@ function placeFromDetails(d,fallbackName,placeId){ var hours="",hbd=null,photo="
   return {name:d.name||fallbackName,address:d.formatted_address||"",lat:d.geometry.location.lat(),lng:d.geometry.location.lng(),
     categoryId:autoCategoryGoogle(d.types),hours:hours,hoursByDay:hbd,website:d.website||"",photoUrl:photo,googleUrl:d.url||"",placeId:placeId,
     rating:(typeof d.rating==="number")?d.rating:null,priceLevel:(typeof d.price_level==="number")?d.price_level:null,genre:genreFromTypes(d.types)}; }
+var gLabelsZooming=false;
 var GoogleEngine={
   ready:function(cb){ if(window.google&&window.google.maps&&window.google.maps.places){ cb(); return; }
     window.__wmReady=function(){ cb(); }; window.gm_authFailure=function(){ onGkeyRejected(); };
@@ -1659,12 +1667,16 @@ var GoogleEngine={
       gClickTimer=setTimeout(function(){ gClickTimer=null; if(pid) poiModal(pid,lat,lng); else pinNameModal(lat,lng); },300); });
     googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
     googleMap.addListener("dragstart",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
-    googleMap.addListener("zoom_changed",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
-    googleMap.addListener("idle",updateGoogleLabelVisibility);
+    googleMap.addListener("zoom_changed",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; }
+      if(!gLabelsZooming){ gLabelsZooming=true; googleMap.getDiv().classList.add("wm-zooming"); } });
+    googleMap.addListener("idle",function(){
+      if(gLabelsZooming){ gLabelsZooming=false; googleMap.getDiv().classList.remove("wm-zooming");
+        Object.keys(gLabels).forEach(function(k){ gLabels[k].draw(); }); }
+      updateGoogleLabelVisibility(); });
     var GLabel=function(lat,lng,text){ this._latlng=new google.maps.LatLng(lat,lng); this._text=text; this._div=null; this.setMap(googleMap); };
     GLabel.prototype=new google.maps.OverlayView();
     GLabel.prototype.onAdd=function(){ var d=document.createElement("div"); d.className="g-place-label"; d.textContent=this._text; d.style.display="none"; this._div=d; this.getPanes().overlayLayer.appendChild(d); };
-    GLabel.prototype.draw=function(){ var proj=this.getProjection(); if(!proj||!this._div) return; var pt=proj.fromLatLngToDivPixel(this._latlng); if(pt){ this._div.style.left=Math.round(pt.x+18)+"px"; this._div.style.top=Math.round(pt.y-38)+"px"; } };
+    GLabel.prototype.draw=function(){ if(gLabelsZooming) return; var proj=this.getProjection(); if(!proj||!this._div) return; var pt=proj.fromLatLngToDivPixel(this._latlng); if(pt){ this._div.style.left=Math.round(pt.x+18)+"px"; this._div.style.top=Math.round(pt.y-38)+"px"; } };
     GLabel.prototype.onRemove=function(){ if(this._div){ this._div.parentNode&&this._div.parentNode.removeChild(this._div); this._div=null; } };
     GoogleLabelOverlay=GLabel; },
   setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
@@ -1672,7 +1684,7 @@ var GoogleEngine={
   refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
     Object.keys(gLabels).forEach(function(k){ gLabels[k].setMap(null); }); gLabels={};
     list.forEach(function(p){ var c=catById(p.categoryId);
-      var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color),label:{text:placeIcon(p),fontSize:"15px"},title:p.name||""});
+      var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color,placeIcon(p)),optimized:true,title:p.name||""});
       mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk;
       if(GoogleLabelOverlay) gLabels[p.id]=new GoogleLabelOverlay(p.lat,p.lng,truncLabel(p.name)); });
     setTimeout(updateGoogleLabelVisibility,50);
@@ -1831,7 +1843,8 @@ function findOnMap(it){
   if(it.placeId){ for(var i=0;i<ps.length;i++) if(ps[i].placeId&&ps[i].placeId===it.placeId) return ps[i]; }
   else if(typeof it.lat==="number"&&typeof it.lng==="number"){ for(var i=0;i<ps.length;i++) if(Math.abs(ps[i].lat-it.lat)<0.0003&&Math.abs(ps[i].lng-it.lng)<0.0003) return ps[i]; }
   return null; }
-function hideResults(){ resultsEl.classList.remove("on"); resultsEl.innerHTML=""; }
+function hideResults(){ resultsEl.classList.remove("on"); resultsEl.innerHTML=""; syncSearchClear(); }
+function syncSearchClear(){ var b=document.getElementById("searchClear"); if(b) b.style.display=document.getElementById("search").value?"":"none"; }
 function showResultsMsg(m){ resultsEl.innerHTML='<div class="res note">'+esc(m)+"</div>"; resultsEl.classList.add("on"); }
 /* CJK characters are information-dense — a 1-2 character kanji query can
    fully name a place, unlike Latin script where 1-2 letters are rarely
@@ -2729,7 +2742,8 @@ function wireUI(){
     connectToFolder(id,"Wandermark"); hideAuthGate(); }
   document.getElementById("gateUseLink").onclick=gateConnectLink;
   gfl.addEventListener("keydown",function(e){ if(e.key==="Enter") gateConnectLink(); });
-  document.getElementById("search").addEventListener("input",function(e){ doSearch(e.target.value.trim()); });
+  document.getElementById("search").addEventListener("input",function(e){ syncSearchClear(); doSearch(e.target.value.trim()); });
+  document.getElementById("searchClear").onclick=function(){ var s=document.getElementById("search"); s.value=""; hideResults(); s.focus(); };
   document.getElementById("search").addEventListener("focus",function(e){ var v=e.target.value.trim(); if(v.length>=(isCJKQuery(v)?1:3)) doSearch(v); });
   document.addEventListener("click",function(e){ if(!e.target.closest(".search-wrap")) hideResults(); });
 
