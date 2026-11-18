@@ -10,6 +10,23 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.90] — Faster zoom on mobile (Leaflet)
+
+### Changed
+- **`markerZoomAnimation: false`**: Leaflet's default animates every marker
+  individually on every frame of a zoom gesture — with 50+ places that's
+  hundreds of per-frame DOM writes. With this off, the whole marker pane
+  hides during the animation (one CSS change) and markers snap into position
+  once the gesture ends. The tile scaling animation is still smooth; markers
+  briefly disappear while pinching and reappear when you lift your fingers.
+  Panning is unaffected (still uses one CSS translate on the whole pane).
+- **`updateWhenZooming: false`** on the tile layer: stops the tile layer from
+  requesting fresh tiles mid-gesture. Tiles stay at the previous level during
+  the pinch and load the new level once the gesture completes, reducing
+  mid-gesture network/render work.
+
+---
+
 ## [0.9.89] — Fix: sign-in broken by racing token requests
 
 ### Fixed

@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.89
+  VERSION: 0.9.90
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -784,7 +784,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.89";
+var WANDERMARK_VERSION="0.9.90";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1547,9 +1547,9 @@ function updateLeafletLabelVisibility(){
 var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null, leafletClickTimer=null;
 var LeafletEngine={
   ready:function(cb){ if(window.L) cb(); else setTimeout(function(){LeafletEngine.ready(cb);},150); },
-  init:function(el){ leafletMap=L.map(el,{zoomControl:true,attributionControl:false}).setView([DEF.lat,DEF.lng],DEF.z);
+  init:function(el){ leafletMap=L.map(el,{zoomControl:true,attributionControl:false,markerZoomAnimation:false}).setView([DEF.lat,DEF.lng],DEF.z);
     L.control.attribution({position:"bottomleft"}).addTo(leafletMap);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(leafletMap);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,updateWhenZooming:false,attribution:"© OpenStreetMap"}).addTo(leafletMap);
     leafletLayer=L.layerGroup().addTo(leafletMap);
     leafletMap.on("click",function(e){ if(ui.readOnly) return;
       if(leafletClickTimer){ clearTimeout(leafletClickTimer); leafletClickTimer=null; return; }
