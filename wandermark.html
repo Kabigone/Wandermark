@@ -3,10 +3,14 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.90
+  VERSION: 0.9.91
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.91 Sign-in back on the OAuth redirect flow everywhere (GIS popup can't
+           return tokens under GitHub Pages COOP); one silent prompt=none
+           bounce on load when the token expired; dirty maps pushed on return.
+    0.9.90 Faster Leaflet zoom: markerZoomAnimation/updateWhenZooming off.
     0.9.85 Fix category changes not persisting to Drive: markDirty() was
            missing from all four category operations (edit, add, merge, delete),
            so Drive sync would overwrite local changes on next poll.
@@ -784,7 +788,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.90";
+var WANDERMARK_VERSION="0.9.91";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2077,12 +2081,8 @@ function loadGIS(cb){ if(window.google&&google.accounts&&google.accounts.oauth2)
   s.onload=function(){ cb(); }; s.onerror=function(){ toast("Couldn’t load Google sign-in (only works on the hosted https site, not a local file)."); }; document.head.appendChild(s); }
 function ensureDriveToken(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
   if(driveToken && Date.now()<driveTokenExp){ cb(); return; }
-  loadGIS(function(){
-    if(!gisTokenClient){ gisTokenClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); var f=pendingTokenCb; pendingTokenCb=null; if(f) f(); }
-        else { toast("Google sign-in was cancelled or failed"); pendingTokenCb=null; } },
-      error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); pendingTokenCb=null; } }); }
-    pendingTokenCb=cb; gisTokenClient.requestAccessToken({prompt: driveToken?"":"consent"}); }); }
+  /* GIS popup tokens never reach the page under GitHub Pages COOP headers, so use the redirect flow. */
+  save(); startOAuthRedirect(cid); }
 /* ----- signed-in account info, sign out, switch account ----- */
 function fetchDriveUserInfo(cb){ if(!driveToken){ cb(null); return; } if(driveUserInfo){ cb(driveUserInfo); return; }
   fetch("https://www.googleapis.com/drive/v3/about?fields="+encodeURIComponent("user(displayName,emailAddress)"),{headers:{Authorization:"Bearer "+driveToken}})
@@ -2090,12 +2090,7 @@ function fetchDriveUserInfo(cb){ if(!driveToken){ cb(null); return; } if(driveUs
 function signOutDrive(cb){ var tok=driveToken; driveToken=""; driveTokenExp=0; driveUserInfo=null; clearDriveToken(); updateSigninBadge();
   try{ if(tok&&window.google&&google.accounts&&google.accounts.oauth2) google.accounts.oauth2.revoke(tok,function(){ if(cb) cb(); }); else if(cb) cb(); }catch(e){ if(cb) cb(); } }
 function switchDriveAccount(cb){ var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ toast("Drive sign-in isn't set up yet — open 🗂️ Map ▾ → Advanced: Drive connection settings"); return; }
-  signOutDrive(function(){ loadGIS(function(){
-    var client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){ if(resp&&resp.access_token){ driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000; driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); if(cb) cb(); }
-        else toast("Google sign-in was cancelled or failed"); },
-      error_callback:function(){ toast("Google sign-in failed (check the Client ID and that you’re a test user)"); } });
-    client.requestAccessToken({prompt:"select_account"}); }); }); }
+  signOutDrive(function(){ save(); startOAuthRedirect(cid,"select"); }); }
 /* ----- Google Drive folder picker (browse & pick visually, no link copy/paste) ----- */
 var pickerLoaded=false;
 function loadPicker(cb){ if(pickerLoaded&&window.google&&google.picker){ cb(); return; }
@@ -2128,7 +2123,7 @@ function fetchFolderOwnerName(id,cb){ if(!driveToken||Date.now()>=driveTokenExp)
    folder becomes connected (fresh connect, or on boot once already
    reconnected) so old local-only maps don't get left behind. */
 function publishAllUnpublished(){ if(!(appSettings.drive.folderId&&driveToken&&Date.now()<driveTokenExp)) return;
-  LIB.order.forEach(function(mid){ var m=LIB.maps[mid]; if(m&&m.mine&&!m.driveId) driveSaveMap(m,null,{silent:true}); }); }
+  LIB.order.forEach(function(mid){ var m=LIB.maps[mid]; if(m&&((m.mine&&!m.driveId)||(m.driveId&&m.dirty))) driveSaveMap(m,null,{silent:true}); }); }
 function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.drive.folderName=name||""; if(!appSettings.drive.key) appSettings.drive.key=CONFIG.apiKey||""; appSettings.drive.auto=true; save();
   fetchFolderOwnerName(id,function(owner){ toast("Connected to “"+(name||"folder")+"”"+(owner?" — shared by "+owner:"")+" — syncing…"); });
   publishAllUnpublished();
@@ -2136,8 +2131,11 @@ function connectToFolder(id,name){ appSettings.drive.folderId=id; appSettings.dr
 /* ----- the "sign in + connect a folder before you can do anything" gate ----- */
 /* ----- OAuth redirect flow (replaces GIS popup, which COOP headers on GitHub Pages block) ----- */
 var OAUTH_REDIRECT_KEY="wm:pendingOAuth";
-function startOAuthRedirect(cid){
-  try{ sessionStorage.setItem(OAUTH_REDIRECT_KEY,"1"); }catch(e){}
+function startOAuthRedirect(cid,mode){
+  /* mode: "silent" = prompt=none bounce (no UI; returns an error if Google needs input),
+     "select" = account chooser, default = consent first time, quick bounce after that */
+  try{ sessionStorage.setItem(OAUTH_REDIRECT_KEY,mode==="silent"?"silent":"1"); }catch(e){}
+  var prompt=mode==="silent"?"none":mode==="select"?"select_account":(driveEverSignedIn?"":"consent");
   var base=location.href.split("#")[0].split("?")[0];
   location.href="https://accounts.google.com/o/oauth2/v2/auth"
     +"?client_id="+encodeURIComponent(cid)
@@ -2145,7 +2143,7 @@ function startOAuthRedirect(cid){
     +"&response_type=token"
     +"&redirect_uri="+encodeURIComponent(base)
     +"&include_granted_scopes=true"
-    +"&prompt=consent"; }
+    +(prompt?"&prompt="+prompt:""); }
 function handleOAuthRedirectReturn(){
   var pending; try{ pending=sessionStorage.getItem(OAUTH_REDIRECT_KEY); }catch(e){}
   var hash=location.hash||"";
@@ -2155,7 +2153,7 @@ function handleOAuthRedirectReturn(){
   var tm=hash.match(/[#&]access_token=([^&]+)/), em=hash.match(/[#&]expires_in=([^&]+)/), errm=hash.match(/[#&]error=([^&]+)/);
   if(tm){ driveToken=decodeURIComponent(tm[1]); driveTokenExp=Date.now()+((parseInt((em||[])[1])||3000)*1000)-60000;
     driveUserInfo=null; driveEverSignedIn=true; saveDriveToken(); scheduleTokenRefresh(); return true; }
-  if(errm) setTimeout(function(){ toast("Google sign-in failed: "+decodeURIComponent(errm[1])); },800);
+  if(errm&&pending!=="silent") setTimeout(function(){ toast("Google sign-in failed: "+decodeURIComponent(errm[1])); },800);
   return false; }
 function afterDriveTokenReady(){
   if(appSettings.drive.folderId){ hideAuthGate(); publishAllUnpublished(); renderAll(); return; }
@@ -2200,20 +2198,6 @@ function mapToFileJSON(map){ return JSON.stringify({v:1,name:map.name,kind:(map.
    not possible does it nudge you to sign in by hand (rate-limited so it isn't naggy). The
    manual "Push edits" button keeps working any time and signs you in with the usual prompt. */
 var autoPushTimers={};
-function trySilentDriveToken(cb){
-  if(driveToken&&Date.now()<driveTokenExp){ cb(true); return; }
-  var cid=(appSettings.drive&&appSettings.drive.clientId)||""; if(!cid){ cb(false); return; }
-  loadGIS(function(){
-    var sc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
-      callback:function(resp){
-        if(resp&&resp.access_token){
-          needsReAuth=false;
-          driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000;
-          driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); cb(true);
-        } else { needsReAuth=true; updateSigninBadge(); cb(false); }
-      },
-      error_callback:function(){ needsReAuth=true; updateSigninBadge(); cb(false); } });
-    sc.requestAccessToken({prompt:""}); }); }
 function scheduleTokenRefresh(){
   if(!driveToken||Date.now()>=driveTokenExp) return;
   var ms=driveTokenExp-Date.now()-120000; /* flag for re-auth 2 min before expiry */
@@ -2231,7 +2215,7 @@ function runAutoPush(map){ if(!map||!map.dirty) return;
   var d=appSettings.drive||{}; if(!d.clientId) return;
   if(!d.folderId){ nudgeNoFolder(map); return; }
   if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
-  /* Token expired — flag for re-auth, the on-tap listener handles requestAccessToken with a user gesture */
+  /* Token expired — flag it; tapping the 🔑 badge re-auths via redirect and pushes dirty maps on return */
   if(!needsReAuth){ needsReAuth=true; updateSigninBadge(); } nudgeSignIn(map); }
 function scheduleAutoPush(map){ if(!map) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
@@ -2282,11 +2266,9 @@ function pollDriveIfDue(minGapMs){ var d=appSettings.drive||{};
   if(!d.folderId||!d.key||document.hidden) return;
   if(Date.now()-lastDriveSyncAt<minGapMs) return;
   lastDriveSyncAt=Date.now();
-  /* If the token lapsed, mark needsReAuth and skip the sync — the Drive folder
-     is public-key-readable anyway, and calling requestAccessToken from a timer
-     triggers FedCM prompts on Android Chrome without a user gesture. */
+  /* Token lapsed: flag the badge but keep syncing — reads fall back to the API key. */
   if((driveToken||driveEverSignedIn) && Date.now()>=driveTokenExp && d.clientId){
-    needsReAuth=true; updateSigninBadge(); return; }
+    needsReAuth=true; updateSigninBadge(); }
   syncDrive({silent:true}); }
 function startDrivePolling(){
   setInterval(function(){ pollDriveIfDue(90000); },120000);
@@ -2785,12 +2767,7 @@ function wireUI(){
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
   document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); if(ui.linkMode==="collab"&&ui.readOnly){ unlockCollabEdit(); } else autoConnectFolder(function(){ mapsModal(); }); }); };
-  document.addEventListener("click",function(e){
-    if(!needsReAuth||!driveEverSignedIn||!appSettings.drive||!appSettings.drive.clientId) return;
-    if(e.target&&e.target.id==="signinBadge") return; /* badge click handled by its own onclick */
-    if(driveToken&&Date.now()<driveTokenExp){ needsReAuth=false; updateSigninBadge(); return; }
-    trySilentDriveToken(function(ok){ updateSigninBadge(); if(ok&&state&&state.dirty) scheduleAutoPush(state); }); },true);
-  document.getElementById("roSignIn").onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); unlockCollabEdit(); }); };
+    document.getElementById("roSignIn").onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); unlockCollabEdit(); }); };
 
   var menu=document.getElementById("menu");
   document.getElementById("menuBtn").onclick=function(e){ e.stopPropagation(); menu.classList.toggle("on"); };
@@ -2835,7 +2812,10 @@ function boot(){ wireUI(); loadDriveToken(); var oauthReturn=handleOAuthRedirect
         if(appSettings.drive.folderId){ publishAllUnpublished(); }
         else { showAuthGate(); setTimeout(afterDriveTokenReady,80); } }
       else if(driveToken&&Date.now()<driveTokenExp){ scheduleTokenRefresh(); if(appSettings.drive.folderId) publishAllUnpublished(); }
-      else if(appSettings.drive.clientId&&driveEverSignedIn){ needsReAuth=true; updateSigninBadge(); }
+      else if(appSettings.drive.clientId&&driveEverSignedIn){ needsReAuth=true; updateSigninBadge();
+        var lastTry=0; try{ lastTry=+sessionStorage.getItem("wm:silentTry")||0; }catch(e){}
+        if(!location.search&&Date.now()-lastTry>1800000){ try{ sessionStorage.setItem("wm:silentTry",String(Date.now())); }catch(e){}
+          startOAuthRedirect(appSettings.drive.clientId,"silent"); return; } }
       else if(appSettings.drive.clientId) showAuthGate();
       if(appSettings.drive.auto&&appSettings.drive.folderId&&appSettings.drive.key) setTimeout(function(){ syncDrive({silent:true}); },1400);
       startDrivePolling(); }); }); }

@@ -10,6 +10,31 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.91] — Fix: sign-in completely broken (back to redirect flow)
+
+### Fixed
+- **Sign-in loop**: since 0.9.61 sign-in has had to use a full-page OAuth
+  redirect, because GitHub Pages' COOP headers stop the Google Identity popup
+  from handing its token back to the page. 0.9.74–0.9.89 reintroduced popup-based
+  token requests (`trySilentDriveToken`, an every-tap re-auth listener, and the
+  🔑 badge's `ensureDriveToken`), so signing in "worked" in the popup but the app
+  never received the token, and every tap opened the sign-in screen again.
+  All sign-in paths (badge, Maps menu, read-only bar, access dialog, folder
+  picker, switch account) now use the redirect flow; the popup code and the
+  every-tap listener are removed.
+- Re-auth after the first sign-in skips the consent screen (no `prompt=consent`),
+  so it's a quick bounce to Google and back.
+- **Silent sign-in on open**: if your token has expired and you've signed in
+  before, the app does one `prompt=none` redirect bounce on load (at most once per
+  30 min per tab). If your Google session is alive you come back signed in with
+  no UI; if not, Google returns an error quietly and the 🔑 badge pulses.
+- After coming back signed in, maps with unsynced edits are pushed to Drive
+  (previously only never-uploaded maps were).
+- The periodic Drive poll keeps syncing (via the API key) while the token is
+  expired, instead of stopping.
+
+---
+
 ## [0.9.90] — Faster zoom on mobile (Leaflet)
 
 ### Changed
