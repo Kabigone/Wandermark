@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.89] — Fix: sign-in broken by racing token requests
+
+### Fixed
+- **Badge tap did nothing** (regression from 0.9.88): the on-tap re-auth listener
+  fired on every click including the 🔑 badge tap. `prompt:"none"` fails
+  immediately when the Google session is expired, sets `needsReAuth=true` again,
+  and raced against the badge's own `ensureDriveToken` call. The on-tap listener
+  now skips clicks on the badge itself so the badge can do its own sign-in flow
+  uninterrupted.
+- Restored `prompt:""` for the silent on-tap attempt — `prompt:"none"` is too
+  strict and can fail even when the Google session is still active.
+
+---
+
 ## [0.9.88] — Fix: eliminate all background sign-in prompts
 
 ### Fixed

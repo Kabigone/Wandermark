@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.88
+  VERSION: 0.9.89
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -784,7 +784,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.88";
+var WANDERMARK_VERSION="0.9.89";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2213,7 +2213,7 @@ function trySilentDriveToken(cb){
         } else { needsReAuth=true; updateSigninBadge(); cb(false); }
       },
       error_callback:function(){ needsReAuth=true; updateSigninBadge(); cb(false); } });
-    sc.requestAccessToken({prompt:"none"}); }); }
+    sc.requestAccessToken({prompt:""}); }); }
 function scheduleTokenRefresh(){
   if(!driveToken||Date.now()>=driveTokenExp) return;
   var ms=driveTokenExp-Date.now()-120000; /* flag for re-auth 2 min before expiry */
@@ -2785,8 +2785,9 @@ function wireUI(){
   document.getElementById("addCatBtn").onclick=categoryModal;
   document.getElementById("mapBtn").onclick=mapsModal;
   document.getElementById("signinBadge").onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); updateSigninBadge(); if(ui.linkMode==="collab"&&ui.readOnly){ unlockCollabEdit(); } else autoConnectFolder(function(){ mapsModal(); }); }); };
-  document.addEventListener("click",function(){
+  document.addEventListener("click",function(e){
     if(!needsReAuth||!driveEverSignedIn||!appSettings.drive||!appSettings.drive.clientId) return;
+    if(e.target&&e.target.id==="signinBadge") return; /* badge click handled by its own onclick */
     if(driveToken&&Date.now()<driveTokenExp){ needsReAuth=false; updateSigninBadge(); return; }
     trySilentDriveToken(function(ok){ updateSigninBadge(); if(ok&&state&&state.dirty) scheduleAutoPush(state); }); },true);
   document.getElementById("roSignIn").onclick=function(){ ensureDriveToken(function(){ toast("Signed in ✓"); updateSigninBadge(); unlockCollabEdit(); }); };
