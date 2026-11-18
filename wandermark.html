@@ -3,7 +3,7 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.87
+  VERSION: 0.9.88
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
@@ -784,7 +784,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.87";
+var WANDERMARK_VERSION="0.9.88";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -2207,19 +2207,20 @@ function trySilentDriveToken(cb){
     var sc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive",
       callback:function(resp){
         if(resp&&resp.access_token){
+          needsReAuth=false;
           driveToken=resp.access_token; driveTokenExp=Date.now()+((resp.expires_in||3000)*1000)-60000;
           driveUserInfo=null; saveDriveToken(); updateSigninBadge(); scheduleTokenRefresh(); cb(true);
-        } else { cb(false); }
+        } else { needsReAuth=true; updateSigninBadge(); cb(false); }
       },
-      error_callback:function(){ cb(false); } });
-    sc.requestAccessToken({prompt:""}); }); }
+      error_callback:function(){ needsReAuth=true; updateSigninBadge(); cb(false); } });
+    sc.requestAccessToken({prompt:"none"}); }); }
 function scheduleTokenRefresh(){
-  var ms=driveTokenExp-Date.now()-600000; /* silent-refresh 10 min before expiry */
-  if(ms<60000) ms=60000;
+  if(!driveToken||Date.now()>=driveTokenExp) return;
+  var ms=driveTokenExp-Date.now()-120000; /* flag for re-auth 2 min before expiry */
+  if(ms<10000) ms=10000;
   setTimeout(function(){
-    if(driveToken&&Date.now()<driveTokenExp) return;
-    if(!(appSettings.drive&&appSettings.drive.clientId)) return;
-    trySilentDriveToken(function(ok){ if(ok) scheduleTokenRefresh(); }); },ms); }
+    if(driveToken&&Date.now()<driveTokenExp) return; /* still valid, nothing to do */
+    needsReAuth=true; updateSigninBadge(); },ms); }
 function nudgeSignIn(map){ var now=Date.now();
   if(map._lastSignInNudge&&now-map._lastSignInNudge<600000) return; map._lastSignInNudge=now;
   toast("🔑 “"+map.name+"” has unsynced changes — tap the 🔑 button above to sync."); }
@@ -2230,8 +2231,8 @@ function runAutoPush(map){ if(!map||!map.dirty) return;
   var d=appSettings.drive||{}; if(!d.clientId) return;
   if(!d.folderId){ nudgeNoFolder(map); return; }
   if(driveToken&&Date.now()<driveTokenExp){ driveSaveMap(map,null,{silent:true}); return; }
-  if(needsReAuth){ nudgeSignIn(map); return; } /* wait for user-gesture re-auth instead of forcing a prompt */
-  trySilentDriveToken(function(ok){ if(!map.dirty) return; if(ok) driveSaveMap(map,null,{silent:true}); else { needsReAuth=true; updateSigninBadge(); nudgeSignIn(map); } }); }
+  /* Token expired — flag for re-auth, the on-tap listener handles requestAccessToken with a user gesture */
+  if(!needsReAuth){ needsReAuth=true; updateSigninBadge(); } nudgeSignIn(map); }
 function scheduleAutoPush(map){ if(!map) return; var id=map.id;
   if(autoPushTimers[id]) clearTimeout(autoPushTimers[id]);
   autoPushTimers[id]=setTimeout(function(){ delete autoPushTimers[id]; runAutoPush(map); },12000); }

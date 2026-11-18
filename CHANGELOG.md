@@ -10,6 +10,30 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.88] — Fix: eliminate all background sign-in prompts
+
+### Fixed
+- **Sign-in prompts during use**: two more paths were calling `requestAccessToken`
+  from `setTimeout` callbacks (not user gestures), which can trigger FedCM
+  account-picker UI on Android Chrome:
+  - `scheduleTokenRefresh` fired 10 min before token expiry and called
+    `requestAccessToken` from a timer. It now just sets the pulsing 🔑 badge
+    2 min before expiry and waits.
+  - `runAutoPush` (fires 12 s after a map edit) called `requestAccessToken`
+    whenever the token had expired and `needsReAuth` hadn't been set yet. It
+    now sets `needsReAuth=true` immediately and nudges instead.
+- `trySilentDriveToken` (called only from the on-tap listener, a real gesture)
+  now uses `prompt:"none"` — Chrome's truly-silent mode that never shows any UI.
+  If the Google session is still active the token refreshes invisibly; if not,
+  the badge stays pulsing until the user taps 🔑 to sign in explicitly.
+- Clear `needsReAuth` on successful silent refresh so the badge stops pulsing.
+
+**Net result**: `requestAccessToken` is now only ever called (a) when the user
+taps anywhere on the page and `needsReAuth` is set (silent, no UI unless Google
+session is gone), or (b) when the user explicitly taps the 🔑 badge.
+
+---
+
 ## [0.9.87] — Fix: stop sign-in prompt on every page open
 
 ### Fixed
