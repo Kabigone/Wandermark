@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.94] — Fix: edits lost when a background sync ran mid-edit
+
+### Fixed
+- **Place edits (icon, category, notes, tags) sometimes didn't save.** Drive sync
+  (every 2 min, on returning to the app, and after sign-in renewal) replaced every
+  clean map's places with fresh copies — even when the Drive file hadn't changed.
+  An open popup still held the old copy, so Save edited an object that was no
+  longer in the map. Sync now only replaces a map when its Drive file's
+  `modifiedTime` actually changed, and the popup's Save applies the edit to the
+  current copy of the place (looked up by id).
+- Same protection for the category editor's Save.
+
+---
+
 ## [0.9.93] — Automatic sign-in renewal
 
 Google's browser sign-in tokens last one hour, and a server-less app can't get a

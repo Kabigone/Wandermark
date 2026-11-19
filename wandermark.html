@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.93
+  VERSION: 0.9.94
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.94 Fix edits (place icon/category/notes, category icon) lost when a
+           background Drive sync swapped in fresh copies while the editor was open.
     0.9.93 Automatic sign-in renewal: silent Google bounce when the tab is
            foregrounded or idle with an expired token (not just on load), with
            login_hint; map view restored after the bounce.
@@ -794,7 +796,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.93";
+var WANDERMARK_VERSION="0.9.94";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1322,6 +1324,8 @@ function catRaw(id){ for(var i=0;i<state.categories.length;i++) if(state.categor
 function catById(id){ var c=catRaw(id); var d=DEFAULT_CATS_BY_ID[c.id];
   if(d&&!c.custom) return {id:c.id,name:d.name,color:d.color,emoji:d.emoji};
   return c; }
+/* The popup keeps the place object it opened with; a Drive sync can swap in fresh copies meanwhile. */
+function livePlace(p){ for(var i=0;i<state.places.length;i++) if(state.places[i].id===p.id) return state.places[i]; state.places.push(p); return p; }
 function placeIcon(p){ return p.icon||GENRE_ICONS[p.genre]||catById(p.categoryId).emoji; }
 function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
 function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
@@ -1500,7 +1504,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   if(opts.add){
     node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); addPlace(p); closePopup(); };
   } else if(editable){
-    node.querySelector(".ppsave").onclick=function(){ p.categoryId=node.querySelector(".ppcat").value; p.icon=chosenIcon.v; p.notes=node.querySelector(".ppnote").value; p.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
+    node.querySelector(".ppsave").onclick=function(){ var cur=livePlace(p); cur.categoryId=node.querySelector(".ppcat").value; cur.icon=chosenIcon.v; cur.notes=node.querySelector(".ppnote").value; cur.tags=normalizeTags(node.querySelector(".pptags").value); markDirty(); closePopup(); renderAll(); toast("Saved"); };
     node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
   }
   return node; }
@@ -2346,7 +2350,7 @@ function syncDrive(opts){ opts=opts||{}; var d=appSettings.drive||{}; var fid=d.
         var existing=null; Object.keys(LIB.maps).forEach(function(k){ if(LIB.maps[k].driveId===f.id) existing=LIB.maps[k]; });
         if(existing){
           if(!existing.mine&&f.owners&&f.owners.some(function(o){return o.me;})) existing.mine=true;
-          if(!existing.dirty){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; existing.driveModifiedTime=f.modifiedTime; existing._conflictWarnedFor=null; updated++; }
+          if(!existing.dirty&&(!existing.driveModifiedTime||f.modifiedTime!==existing.driveModifiedTime)){ existing.name=data.name||fallbackName; existing.kind=data.kind||existing.kind||"personal"; existing.places=(data.places||[]).map(normalizePlace); if(data.categories&&data.categories.length) existing.categories=data.categories; existing.driveModifiedTime=f.modifiedTime; existing._conflictWarnedFor=null; updated++; }
           else if(existing.driveModifiedTime&&f.modifiedTime&&f.modifiedTime!==existing.driveModifiedTime&&existing._conflictWarnedFor!==f.modifiedTime){
             existing._conflictWarnedFor=f.modifiedTime;
             toast("Heads up — someone else also changed “"+existing.name+"” on Drive since you started editing. Push your changes soon, or theirs may get overwritten (or vice versa).");
@@ -2411,7 +2415,7 @@ function editCategoryModal(id){ if(ui.readOnly) return; var raw=catRaw(id), c=ca
   buildIconPicker(pe,chosenE,EMOJIS,function(){});
   var pc=modal.querySelector("#ecColor"),chosenC={v:c.color};
   (PALETTE.indexOf(c.color)<0?[c.color].concat(PALETTE):PALETTE).forEach(function(col){ var b=document.createElement("button"); b.style.background=col; if(col===c.color)b.classList.add("sel"); b.onclick=function(){ chosenC.v=col; pc.querySelectorAll("button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); }; pc.appendChild(b); });
-  modal.querySelector("#ecSave").onclick=function(){ raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; markDirty(); renderAll(); categoryModal(); toast("Category updated"); };
+  modal.querySelector("#ecSave").onclick=function(){ for(var ci=0;ci<state.categories.length;ci++) if(state.categories[ci].id===id) raw=state.categories[ci]; raw.name=modal.querySelector("#ecName").value.trim()||c.name; raw.emoji=chosenE.v; raw.color=chosenC.v; raw.custom=true; markDirty(); renderAll(); categoryModal(); toast("Category updated"); };
   modal.querySelector("#ecMergeBtn").onclick=function(){ var tid=modal.querySelector("#ecMerge").value; if(!tid){ toast("Pick a category to merge into"); return; } if(state.categories.length<=1){ toast("Keep at least one category"); return; }
     var moved=state.places.filter(function(p){return p.categoryId===id;}).length; state.places.forEach(function(p){ if(p.categoryId===id) p.categoryId=tid; });
     state.categories=state.categories.filter(function(x){return x.id!==id;}); delete ui.activeCats[id]; markDirty(); renderAll(); categoryModal(); toast("Merged "+moved+" place(s) into "+catById(tid).name); };
