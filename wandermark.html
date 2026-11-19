@@ -3,10 +3,13 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.94
+  VERSION: 0.9.95
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.95 Popups no longer vanish: map refresh only rebuilds pins that changed
+           (sync/autosave used to rebuild all, closing the open popup); sign-in
+           renewal waits while a popup is open.
     0.9.94 Fix edits (place icon/category/notes, category icon) lost when a
            background Drive sync swapped in fresh copies while the editor was open.
     0.9.93 Automatic sign-in renewal: silent Google bounce when the tab is
@@ -796,7 +799,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.94";
+var WANDERMARK_VERSION="0.9.95";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1326,6 +1329,10 @@ function catById(id){ var c=catRaw(id); var d=DEFAULT_CATS_BY_ID[c.id];
   return c; }
 /* The popup keeps the place object it opened with; a Drive sync can swap in fresh copies meanwhile. */
 function livePlace(p){ for(var i=0;i<state.places.length;i++) if(state.places[i].id===p.id) return state.places[i]; state.places.push(p); return p; }
+function findPlace(id){ for(var i=0;i<state.places.length;i++) if(state.places[i].id===id) return state.places[i]; return null; }
+function pinSig(p){ var c=catById(p.categoryId); return [p.lat,p.lng,c.color,placeIcon(p),p.name].join("|"); }
+function popupIsOpen(){ try{ if(ui.engine==="osm") return !!(leafletMap&&leafletMap._popup&&leafletMap.hasLayer(leafletMap._popup));
+  return !!(gInfo&&(gInfo.isOpen||gInfoPid)); }catch(e){ return false; } }
 function placeIcon(p){ return p.icon||GENRE_ICONS[p.genre]||catById(p.categoryId).emoji; }
 function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
 function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
@@ -1508,7 +1515,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
     node.querySelector(".ppdel").onclick=function(){ state.places=state.places.filter(function(x){return x.id!==p.id;}); markDirty(); closePopup(); renderAll(); toast("Deleted “"+(p.name||"place")+"”"); };
   }
   return node; }
-function closePopup(){ try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
+function closePopup(){ gInfoPid=null; try{ if(ui.engine==="osm"&&leafletMap) leafletMap.closePopup(); else if(gInfo) gInfo.close(); }catch(e){} }
 
 function meSvgHtml(heading){
   var h=typeof heading==="number"&&!isNaN(heading);
@@ -1575,10 +1582,16 @@ var LeafletEngine={
     leafletMap.on("moveend",updateLeafletLabelVisibility); },
   setView:function(v){ if(leafletMap) leafletMap.setView([v.lat,v.lng],v.z||12); },
   getCenter:function(){ var c=leafletMap.getCenter(); return {lat:c.lat,lng:c.lng}; },
-  refresh:function(list){ leafletLayer.clearLayers(); markers={};
-    list.forEach(function(p){ var c=catById(p.categoryId);
+  refresh:function(list){ var keep={};
+    /* Only rebuild pins that changed: removing a pin closes its open popup. */
+    list.forEach(function(p){ var sig=pinSig(p), old=markers[p.id], pid=p.id; keep[pid]=1;
+      if(old&&old._sig===sig) return;
+      var wasOpen=!!(old&&old.isPopupOpen&&old.isPopupOpen()); if(old) leafletLayer.removeLayer(old);
+      var c=catById(p.categoryId);
       var mk=L.marker([p.lat,p.lng],{icon:L.divIcon({className:"",html:'<div style="position:relative"><div class="mk-pin" style="--c:'+c.color+'"><span>'+placeIcon(p)+'</span></div><span class="mk-lbl">'+esc(truncLabel(p.name))+'</span></div>',iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[0,-28]})});
-      mk.bindPopup(function(){ return makePopupNode(p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[p.id]=mk; });
+      mk._sig=sig; mk.bindPopup(function(){ return makePopupNode(findPlace(pid)||p); },{minWidth:252,maxWidth:280}); mk.addTo(leafletLayer); markers[pid]=mk;
+      if(wasOpen) mk.openPopup(); });
+    Object.keys(markers).forEach(function(k){ if(!keep[k]){ leafletLayer.removeLayer(markers[k]); delete markers[k]; } });
     updateLeafletLabelVisibility();
     if(leafletRef){ leafletMap.removeLayer(leafletRef); leafletRef=null; }
     var a=getAnchor(); if(a) leafletRef=L.marker([a.lat,a.lng],{icon:L.divIcon({className:"",html:'<div class="mk-ref"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:-100}).addTo(leafletMap); },
@@ -1620,6 +1633,7 @@ var LeafletEngine={
 };
 
 /* ===================== Google engine ===================== */
+var gInfoPid=null;
 var googleMap=null, gInfo=null, gMarkers={}, gLabels={}, gRef=null, gMe=null, acService=null, placesService=null, geocoder=null, gScriptStarted=false, gClickTimer=null, GoogleLabelOverlay=null;
 function updateGoogleLabelVisibility(){
   if(!googleMap) return;
@@ -1665,7 +1679,8 @@ var GoogleEngine={
     s.async=true; s.defer=true; s.onerror=function(){ onGoogleLoadError(); }; document.head.appendChild(s); },
   init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,cameraControl:false,gestureHandling:"greedy",clickableIcons:true,
       zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM},rotateControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}});
-    gInfo=new google.maps.InfoWindow({maxWidth:284}); acService=new google.maps.places.AutocompleteService();
+    gInfo=new google.maps.InfoWindow({maxWidth:284}); gInfoPid=null;
+    gInfo.addListener("closeclick",function(){ gInfoPid=null; }); gInfo.addListener("close",function(){ gInfoPid=null; }); acService=new google.maps.places.AutocompleteService();
     placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
     googleMap.addListener("click",function(e){ if(ui.readOnly) return;
       if(e.placeId) e.stop();
@@ -1688,16 +1703,23 @@ var GoogleEngine={
     GoogleLabelOverlay=GLabel; },
   setView:function(v){ if(googleMap){ googleMap.setCenter({lat:v.lat,lng:v.lng}); googleMap.setZoom(v.z||12); } },
   getCenter:function(){ return googleMap.getCenter().toJSON(); },
-  refresh:function(list){ Object.keys(gMarkers).forEach(function(k){ gMarkers[k].setMap(null); }); gMarkers={};
-    Object.keys(gLabels).forEach(function(k){ gLabels[k].setMap(null); }); gLabels={};
-    list.forEach(function(p){ var c=catById(p.categoryId);
+  refresh:function(list){ var keep={};
+    /* Only rebuild pins that changed: removing a pin closes the InfoWindow anchored to it. */
+    var openPid=gInfoPid;
+    list.forEach(function(p){ var sig=pinSig(p), old=gMarkers[p.id], pid=p.id; keep[pid]=1;
+      if(old&&old._sig===sig) return;
+      if(old) old.setMap(null); if(gLabels[pid]){ gLabels[pid].setMap(null); delete gLabels[pid]; }
+      var c=catById(p.categoryId);
       var mk=new google.maps.Marker({position:{lat:p.lat,lng:p.lng},map:googleMap,icon:gPinIcon(c.color,placeIcon(p)),optimized:true,title:p.name||""});
-      mk.addListener("click",function(){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); }); gMarkers[p.id]=mk;
-      if(GoogleLabelOverlay) gLabels[p.id]=new GoogleLabelOverlay(p.lat,p.lng,truncLabel(p.name)); });
+      mk._sig=sig; mk.addListener("click",function(){ var lp=findPlace(pid)||p; gInfo.setContent(makePopupNode(lp)); gInfo.open(googleMap,mk); gInfoPid=pid; });
+      gMarkers[pid]=mk;
+      if(GoogleLabelOverlay) gLabels[pid]=new GoogleLabelOverlay(p.lat,p.lng,truncLabel(p.name));
+      if(openPid===pid){ gInfo.open(googleMap,mk); gInfoPid=pid; } });
+    Object.keys(gMarkers).forEach(function(k){ if(!keep[k]){ gMarkers[k].setMap(null); delete gMarkers[k]; if(gLabels[k]){ gLabels[k].setMap(null); delete gLabels[k]; } if(gInfoPid===k) gInfoPid=null; } });
     setTimeout(updateGoogleLabelVisibility,50);
     if(gRef){ gRef.setMap(null); gRef=null; }
     var a=getAnchor(); if(a) gRef=new google.maps.Marker({position:{lat:a.lat,lng:a.lng},map:googleMap,zIndex:-100,icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2c726c",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}}); },
-  open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); } },
+  open:function(p){ googleMap.panTo({lat:p.lat,lng:p.lng}); googleMap.setZoom(16); var mk=gMarkers[p.id]; if(mk){ gInfo.setContent(makePopupNode(p)); gInfo.open(googleMap,mk); gInfoPid=p.id; } },
   fit:function(places){ if(!places.length) return; var b=new google.maps.LatLngBounds(); places.forEach(function(p){ b.extend({lat:p.lat,lng:p.lng}); }); googleMap.fitBounds(b,60); if(places.length===1) googleMap.setZoom(15); },
   showMe:function(loc){
     var hasH=typeof loc.heading==="number"&&!isNaN(loc.heading);
@@ -2166,7 +2188,7 @@ function saveViewForReturn(){ try{ if(!ui.mapReady||!Engine) return; var c=Engin
    that needs interaction can't cause repeated reloads; skipped while the person is mid-task. */
 function silentRenewIfExpired(){ var d=appSettings.drive||{};
   if(!d.clientId||!driveEverSignedIn||(driveToken&&Date.now()<driveTokenExp)) return false;
-  if(location.search||ui.readOnly||scrim.classList.contains("on")) return false;
+  if(location.search||ui.readOnly||scrim.classList.contains("on")||popupIsOpen()) return false;
   var s=document.getElementById("search"); if(s&&s.value) return false;
   var last=0; try{ last=+sessionStorage.getItem(SILENT_TRY_KEY)||0; }catch(e){}
   if(Date.now()-last<1800000) return false;

@@ -10,6 +10,23 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.95] — Fix: popups randomly disappearing
+
+### Fixed
+- **Open popups closed on their own.** Every map refresh (`renderAll` → engine
+  `refresh`) removed and recreated every pin. That runs after each Drive sync
+  (every 2 min, on returning to the app, on window focus), after each autosave to
+  Drive, and on filter changes — and removing a pin closes the popup attached to
+  it. Both engines now keep pins whose position, icon, color and name are
+  unchanged, and only rebuild the ones that differ; if the pin with the open
+  popup does change, the popup is re-attached to its replacement. Pins look up
+  their place by id when tapped, so they always show current data.
+- The automatic sign-in renewal (0.9.93) no longer reloads the page while a
+  popup is open.
+- Fewer pin rebuilds also means less work on every refresh.
+
+---
+
 ## [0.9.94] — Fix: edits lost when a background sync ran mid-edit
 
 ### Fixed
