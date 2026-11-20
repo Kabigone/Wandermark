@@ -10,6 +10,16 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.97] — Day filter as a dropdown
+
+### Changed
+- The seven "Open on" day chips are replaced by one compact dropdown next to
+  **🕔 Open now**: "📅 Any day", then "Open Mon (n)" … "Open Sun (n)" with the
+  number of places open that day and today marked. It turns teal while a day is
+  selected; choose "Any day" to clear.
+
+---
+
 ## [0.9.96] — "Open on" day chips
 
 ### Added
