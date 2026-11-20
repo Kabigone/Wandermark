@@ -10,6 +10,9 @@ the file in a browser. It's hosted on GitHub Pages and shared with friends.
 
 - Live: https://kabigone.github.io/Wandermark/ (redirects to `wandermark.html`)
 - Map engines: keyless **OpenStreetMap** (Leaflet) or **Google Maps** (user's API key).
+  Google Maps Platform is billed per use, so `CONFIG.googleMapsEnabled` (currently
+  `false`) switches it off site-wide: OSM only, no Places calls, no Google photo
+  loads. Drive APIs are unaffected by it.
 - Optional **Google Drive sync**: reads a shared folder of map JSONs (API key) and,
   when signed in (OAuth), writes maps back so friends can collaborate.
 

@@ -10,6 +10,24 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.98] — Switch to turn off billed Google Maps APIs
+
+### Added
+- `CONFIG.googleMapsEnabled` (set to `false`): a site-wide switch for everything
+  in Google Maps Platform, which is billed per use to the project that owns the
+  shared key — for everyone who opens the site. When off:
+  - the map always uses OpenStreetMap (even if someone has entered their own
+    Google key), and the Google option in Map style is replaced by a note;
+  - no Places autocomplete/search/details, geocoding, or the per-popup photo
+    refresh (previously a billed Place Details call every time a popup opened);
+  - saved Google place-photo links aren't loaded in popups or list thumbnails
+    (each load is billed); places show their emoji instead;
+  - "Enrich from Google" is hidden.
+- Google Drive sync and sign-in use separate, non-billed APIs and keep working.
+  Set the switch back to `true` to restore Google Maps.
+
+---
+
 ## [0.9.97] — Day filter as a dropdown
 
 ### Changed

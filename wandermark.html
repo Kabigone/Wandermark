@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.97
+  VERSION: 0.9.98
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.98 CONFIG.googleMapsEnabled site-wide switch (off): no billed Google Maps
+           Platform calls — OpenStreetMap only, no Google photo loads. Drive unaffected.
     0.9.97 "Open on" day picker is a single compact dropdown instead of 7 chips.
     0.9.96 "Open on" day chips (Mon–Sun) beside "Open now", with per-day open
            counts; "Open now" always checks today.
@@ -804,7 +806,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.97";
+var WANDERMARK_VERSION="0.9.98";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -815,6 +817,10 @@ var WANDERMARK_VERSION="0.9.97";
    A person's own entered values always override these.
    ============================================================================ */
 var CONFIG={
+  /* Google Maps Platform (map tiles, Places search/details/photos, geocoding) is billed per use to the
+     project that owns apiKey, for everyone who opens the site. false = nobody loads it: OpenStreetMap
+     only, and saved Google photo links aren't shown. Drive sync/sign-in are separate free APIs and keep working. */
+  googleMapsEnabled:false,
   apiKey:"AIzaSyDMrPg3INdf6lXcclBvmVK5necLa93q7JA",         // Referrer-restricted Google API key — covers Maps JS + Places (base map, search, photos) AND the Drive API (reads the shared folder). One key, multiple APIs enabled on it.
   driveFolderId:"",  // shared Drive folder ID (folder shared "Anyone with the link → Viewer")
   oauthClientId:"571277467395-6ik6sfbvubt11h6cg137g5g9npr9pkrs.apps.googleusercontent.com"   // OAuth Client ID (…apps.googleusercontent.com) — for sign-in to edit/save
@@ -1338,6 +1344,8 @@ function findPlace(id){ for(var i=0;i<state.places.length;i++) if(state.places[i
 function pinSig(p){ var c=catById(p.categoryId); return [p.lat,p.lng,c.color,placeIcon(p),p.name].join("|"); }
 function popupIsOpen(){ try{ if(ui.engine==="osm") return !!(leafletMap&&leafletMap._popup&&leafletMap.hasLayer(leafletMap._popup));
   return !!(gInfo&&(gInfo.isOpen||gInfoPid)); }catch(e){ return false; } }
+/* Saved Google place-photo links are billed each time they load. */
+function photoOk(url){ return !!url&&(CONFIG.googleMapsEnabled||!/maps\.googleapis\.com/i.test(url)); }
 function placeIcon(p){ return p.icon||GENRE_ICONS[p.genre]||catById(p.categoryId).emoji; }
 function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
 function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
@@ -1483,7 +1491,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
   var editable=opts.add||!ui.readOnly;
   var topActs='<div class="ptop-acts"><a class="ticon" target="_blank" rel="noopener" title="Open in Google Maps" href="'+gmapsUrl(p)+'">🗺️</a>'+
     '<a class="ticon" target="_blank" rel="noopener" title="Directions from your location" href="'+gmapsDirUrl(p)+'">🧭</a></div>';
-  node.innerHTML=(p.photoUrl?'<div class="pop-photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"></div>':"")+
+  node.innerHTML=(photoOk(p.photoUrl)?'<div class="pop-photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"></div>':"")+
     '<div class="ptop"><span class="pcat" style="background:'+c.color+'">'+c.emoji+" "+esc(c.name)+"</span>"+nowtag+topActs+"</div>"+
     "<h4>"+esc(p.name||"(unnamed)")+"</h4>"+metaLineHtml(p)+(p.address?'<div class="pa">'+esc(p.address)+"</div>":"")+
     hoursBlockHtml(p)+links+
@@ -1497,7 +1505,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
       (p.notes?'<p class="pop-notes">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
   var hrExp=node.querySelector('.hr-exp'); if(hrExp){hrExp.onclick=function(){var g=this.parentNode.nextElementSibling;var o=g.style.display!=='none';g.style.display=o?'none':'';this.textContent=o?'▾ Hours':'▴ Hide';}; }
-  if(ui.engine==="google"&&placesService&&p.placeId){
+  if(CONFIG.googleMapsEnabled&&ui.engine==="google"&&placesService&&p.placeId){
     placesService.getDetails({placeId:p.placeId,fields:["photos"]},function(d,gst){
       if(gst!==google.maps.places.PlacesServiceStatus.OK||!d||!d.photos||!d.photos.length) return;
       try{ var url=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); if(!url||url===p.photoUrl) return;
@@ -1829,7 +1837,7 @@ function teardownMap(){ if(meAnimFrame){ cancelAnimationFrame(meAnimFrame); meAn
   try{ if(leafletMap){ leafletMap.remove(); leafletMap=null; leafletLayer=null; leafletRef=null; leafletMe=null; } }catch(e){}
   Object.keys(gLabels).forEach(function(k){ try{gLabels[k].setMap(null);}catch(e){} }); googleMap=null; gInfo=null; gRef=null; gMe=null; markers={}; gMarkers={}; gLabels={}; GoogleLabelOverlay=null;
   var el=document.getElementById("map"); var fresh=el.cloneNode(false); el.parentNode.replaceChild(fresh,el); }
-function startEngine(kind){ teardownMap();
+function startEngine(kind){ teardownMap(); if(!CONFIG.googleMapsEnabled) kind="osm";
   if(kind==="google"&&gkey){ Engine=GoogleEngine; ui.engine="google"; } else { Engine=LeafletEngine; ui.engine="osm"; }
   Engine.ready(function(){ Engine.init(document.getElementById("map")); ui.mapReady=true; renderAll();
     var rv=null; try{ rv=JSON.parse(sessionStorage.getItem(RESTORE_VIEW_KEY)||"null"); sessionStorage.removeItem(RESTORE_VIEW_KEY); }catch(e){}
@@ -1966,7 +1974,7 @@ function renderPlaces(){ var list=getFiltered();
     var price=priceLevelStr(p); if(price) meta+='<span class="price">'+price+"</span>";
     if(p._d!=null) meta+='<span class="km">'+p._d.toFixed(p._d<10?1:0)+" km</span>";
     var st=statusNow(p); if(st===true) meta+='<span class="open">● Open</span>'; else if(st===false) meta+='<span class="closed">● Closed</span>';
-    var pem = p.photoUrl ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+placeIcon(p)+"</span></div>"
+    var pem = photoOk(p.photoUrl) ? '<div class="pem photo" style="background-image:url('+JSON.stringify(p.photoUrl)+')"><span class="badge2" style="background:'+c.color+'">'+placeIcon(p)+"</span></div>"
                          : '<div class="pem" style="background:'+c.color+'">'+placeIcon(p)+"</div>";
     var div=document.createElement("div"); div.className="place";
     div.innerHTML=pem+'<div><div class="pn">'+esc(p.name||"(unnamed)")+'</div><div class="pmeta">'+meta+"</div></div>";
@@ -2058,7 +2066,9 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
       else connectSection+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px"><button class="pillbtn" id="mPickFolder" style="background:var(--teal)">📁 Choose shared folder from Drive</button><span style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Pick the folder a friend shared with you — its maps show up below automatically, kept in sync.</span></div>';
     }
   }
-  var styleSection="<div class=\"divlbl\"><span class=\"ln\"></span>Map style<span class=\"ln\"></span></div>"+
+  var styleSection=!CONFIG.googleMapsEnabled?"<div class=\"divlbl\"><span class=\"ln\"></span>Map style<span class=\"ln\"></span></div>"+
+    '<p class="hint" style="margin-top:0">🗺️ Using OpenStreetMap. Google Maps is turned off for this site because it\'s billed per use.</p>':
+    "<div class=\"divlbl\"><span class=\"ln\"></span>Map style<span class=\"ln\"></span></div>"+
     '<div class="seg" style="display:inline-flex;margin-bottom:6px">'+
     '<button class="btn tab'+(ui.engine==="google"?" active":"")+'" id="engGoogle">🟢 Google Maps</button>'+
     '<button class="btn tab'+(ui.engine==="osm"?" active":"")+'" id="engOSM">🗺️ OpenStreetMap</button></div>'+
@@ -2078,8 +2088,8 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
     '<p class="hint" style="margin-top:14px;text-align:right"><a href="#" id="mAdvanced" style="color:var(--muted);font-size:11.5px">⚙ Advanced: Drive connection settings</a></p>'+
     "</div>");
   modal.querySelector(".close").onclick=closeModal;
-  modal.querySelector("#engGoogle").onclick=function(){ if(ui.engine==="google") return; if(!gkey){ toast("No Google Maps connection available — try “Use your own API key” below"); return; } closeModal(); startEngine("google"); };
-  modal.querySelector("#engOSM").onclick=function(){ if(ui.engine==="osm") return; closeModal(); startEngine("osm"); };
+  if(modal.querySelector("#engGoogle")) modal.querySelector("#engGoogle").onclick=function(){ if(ui.engine==="google") return; if(!gkey){ toast("No Google Maps connection available — try “Use your own API key” below"); return; } closeModal(); startEngine("google"); };
+  if(modal.querySelector("#engOSM")) modal.querySelector("#engOSM").onclick=function(){ if(ui.engine==="osm") return; closeModal(); startEngine("osm"); };
   var okl=modal.querySelector("#ownKeyLink"); if(okl) okl.onclick=function(e){ e.preventDefault(); ownKeyModal(); };
   var madv=modal.querySelector("#mAdvanced"); if(madv) madv.onclick=function(e){ e.preventDefault(); driveModal(); };
   var msi=modal.querySelector("#mSignIn"); if(msi) msi.onclick=function(){ ensureDriveToken(function(){ toast("Signed in to Google ✓"); autoConnectFolder(function(){ mapsModal(); }); }); };
@@ -2813,6 +2823,7 @@ function closeSidebarMobile(){ document.getElementById("aside").classList.remove
 
 /* ===================== init ===================== */
 function wireUI(){
+  if(!CONFIG.googleMapsEnabled){ var enb=document.querySelector('[data-act="enrich"]'); if(enb) enb.style.display="none"; }
   var vt=document.getElementById("verTag"); if(vt) vt.textContent="Wandermark v"+WANDERMARK_VERSION;
   document.getElementById("gateConnect").onclick=authGateConnect;
   document.getElementById("gatePick").onclick=function(){ pickDriveFolder(function(id,name){ connectToFolder(id,name); hideAuthGate(); }); };
