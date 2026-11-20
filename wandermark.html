@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.95
+  VERSION: 0.9.96
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.96 "Open on" day chips (Mon–Sun) beside "Open now", with per-day open
+           counts; "Open now" always checks today.
     0.9.95 Popups no longer vanish: map refresh only rebuilds pins that changed
            (sync/autosave used to rebuild all, closing the open popup); sign-in
            renewal waits while a popup is open.
@@ -577,6 +579,9 @@
   .pop .pprow .ppcat{flex:1}
   .pop .ppiconbtn{flex:0 0 auto;margin-top:5px;font-size:17px;padding:5px 10px;border-radius:7px;border:1px solid var(--line-2);background:#fffdf6;cursor:pointer;line-height:1.4}
   .pop .ppicon{max-height:120px;overflow-y:auto}
+  .chip.dchip{font-size:12px;padding:4px 8px;cursor:pointer;gap:4px}
+  .chip.dchip.today:not(.sel){border-color:var(--teal)}
+  .chip.dchip .ct{opacity:.6;font-weight:500}
   .chip.sel{background:var(--teal);color:#fff;border-color:var(--teal-ink)}
 
   #tableView{position:absolute;inset:0;background:var(--paper);z-index:400;display:none;flex-direction:column}
@@ -717,7 +722,7 @@
     <aside id="aside">
       <div class="pane">
         <div class="field" style="margin-bottom:8px;position:relative"><input id="textFilter" placeholder="Filter by name / note…" autocomplete="off" style="padding-right:28px"><button id="textFilterClear" aria-label="Clear filter" style="display:none;position:absolute;right:7px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;padding:0 2px">✕</button></div>
-        <div style="margin-bottom:12px"><button id="openNowBtn" class="chip" style="font-size:12px;padding:4px 10px;cursor:pointer">🕔 Open now</button></div>
+        <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center"><button id="openNowBtn" class="chip" style="font-size:12px;padding:4px 10px;cursor:pointer">🕔 Open now</button><span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:4px">Open on</span><span id="openDayChips" style="display:contents"></span></div>
         <div class="sec collapsible collapsed" id="filterSec">
           <h3 class="toggler" id="filterToggle">More filters <span class="ln"></span> <span class="fbadge" id="fbadge" style="display:none"></span> <span class="caret">▾</span></h3>
           <div class="sec-body">
@@ -799,7 +804,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.95";
+var WANDERMARK_VERSION="0.9.96";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1918,7 +1923,24 @@ function updateFilterBadge(){
   var xb=document.getElementById("textFilterClear"); if(xb) xb.style.display=(document.getElementById("textFilter").value||"")?"":"none";
   var onb=document.getElementById("openNowBtn");
   if(onb) onb.classList.toggle("sel",document.getElementById("openOnly").checked&&document.getElementById("timeFilter").value==="now");
+  renderOpenDayChips();
 }
+function renderOpenDayChips(){ var el=document.getElementById("openDayChips"); if(!el) return;
+  var on=document.getElementById("openOnly").checked&&!document.getElementById("timeFilter").value, sel=document.getElementById("dayFilter").value, today=todayCode();
+  var withHours=state.places.filter(function(p){ return p.hoursByDay||p.hours; });
+  el.innerHTML="";
+  DAYORDER.forEach(function(d){ var b=document.createElement("button"); b.type="button";
+    b.className="chip dchip"+(d[0]===today?" today":"")+(on&&sel===d[0]?" sel":"");
+    var n=withHours.filter(function(p){ return openOnDay(p,d[0]); }).length;
+    b.innerHTML=d[1]+(withHours.length?' <span class="ct">'+n+"</span>":"");
+    b.title=(d[0]===today?"Today — ":"")+(withHours.length?n+" of "+withHours.length+" places with hours are open":"Show places open on this day");
+    b.onclick=function(){ setOpenFilter(on&&sel===d[0]?null:d[0],""); }; el.appendChild(b); }); }
+/* day=null turns the opening-hours filter off; time "" = any time that day, "now" = open right now. */
+function setOpenFilter(day,time){ var oo=document.getElementById("openOnly");
+  oo.checked=!!day; document.getElementById("hoursControls").style.display=day?"":"none";
+  if(day) document.getElementById("dayFilter").value=day;
+  document.getElementById("timeFilter").value=day?time:""; document.getElementById("customTimeWrap").style.display="none";
+  renderAll(); }
 function renderCatChips(){ var el=document.getElementById("catChips"); el.innerHTML="";
   state.categories.forEach(function(cRaw){ var c=catById(cRaw.id); var n=state.places.filter(function(p){return p.categoryId===cRaw.id;}).length; var active=ui.activeCats[cRaw.id]!==false;
     var d=document.createElement("div"); d.className="chip"+(active?"":" off");
@@ -2815,17 +2837,7 @@ function wireUI(){
     document.getElementById("textFilter").value=""; renderAll(); };
   document.getElementById("openNowBtn").onclick=function(){
     var nowOn=document.getElementById("openOnly").checked&&document.getElementById("timeFilter").value==="now";
-    if(nowOn){
-      document.getElementById("openOnly").checked=false;
-      document.getElementById("hoursControls").style.display="none";
-      document.getElementById("timeFilter").value="";
-    } else {
-      document.getElementById("openOnly").checked=true;
-      document.getElementById("hoursControls").style.display="";
-      document.getElementById("timeFilter").value="now";
-      document.getElementById("customTimeWrap").style.display="none";
-    }
-    renderAll(); };
+    setOpenFilter(nowOn?null:todayCode(),"now"); };
   document.getElementById("tagMode").onclick=function(){ ui.tagMode=(ui.tagMode==="any"?"all":"any"); renderAll(); };
   document.getElementById("dayFilter").addEventListener("change",renderAll);
   document.getElementById("timeFilter").addEventListener("change",function(e){ document.getElementById("customTimeWrap").style.display=(e.target.value==="custom")?"":"none"; renderAll(); });

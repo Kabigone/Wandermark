@@ -10,6 +10,22 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.96] — "Open on" day chips
+
+### Added
+- A row of day chips (Mon–Sun) next to **🕔 Open now**. Tap a day to show only
+  places open at some point that day; tap it again to clear. Each chip shows how
+  many places with known hours are open that day, and today's chip is outlined.
+  Places with no hours data stay visible, as with the existing hours filter.
+  (This drives the same filter as More filters → Filter by opening hours, which
+  still offers specific times.)
+
+### Fixed
+- **Open now** always checks today; before, if a different day was chosen in
+  More filters, it checked that day at the current time.
+
+---
+
 ## [0.9.95] — Fix: popups randomly disappearing
 
 ### Fixed
