@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.98
+  VERSION: 0.9.99
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.99 Google base map back on; Places/Geocoding off via CONFIG.googlePlacesEnabled
+           (search + address lookup use OpenStreetMap Nominatim on either map).
     0.9.98 CONFIG.googleMapsEnabled site-wide switch (off): no billed Google Maps
            Platform calls — OpenStreetMap only, no Google photo loads. Drive unaffected.
     0.9.97 "Open on" day picker is a single compact dropdown instead of 7 chips.
@@ -806,7 +808,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.98";
+var WANDERMARK_VERSION="0.9.99";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -817,10 +819,14 @@ var WANDERMARK_VERSION="0.9.98";
    A person's own entered values always override these.
    ============================================================================ */
 var CONFIG={
-  /* Google Maps Platform (map tiles, Places search/details/photos, geocoding) is billed per use to the
-     project that owns apiKey, for everyone who opens the site. false = nobody loads it: OpenStreetMap
-     only, and saved Google photo links aren't shown. Drive sync/sign-in are separate free APIs and keep working. */
-  googleMapsEnabled:false,
+  /* Google Maps Platform is billed per use to the project that owns apiKey, for everyone who opens the site.
+     googleMapsEnabled: the Google base map (map loads; covered by the free monthly allowance at our usage).
+       false = OpenStreetMap only.
+     googlePlacesEnabled: Places search/details/photos + Geocoding (the expensive part). false = search and
+       address lookup use free OpenStreetMap Nominatim, Google POIs aren't tappable, saved Google photos
+       aren't loaded. Drive sync/sign-in are separate free APIs and unaffected by either. */
+  googleMapsEnabled:true,
+  googlePlacesEnabled:false,
   apiKey:"AIzaSyDMrPg3INdf6lXcclBvmVK5necLa93q7JA",         // Referrer-restricted Google API key — covers Maps JS + Places (base map, search, photos) AND the Drive API (reads the shared folder). One key, multiple APIs enabled on it.
   driveFolderId:"",  // shared Drive folder ID (folder shared "Anyone with the link → Viewer")
   oauthClientId:"571277467395-6ik6sfbvubt11h6cg137g5g9npr9pkrs.apps.googleusercontent.com"   // OAuth Client ID (…apps.googleusercontent.com) — for sign-in to edit/save
@@ -1345,7 +1351,7 @@ function pinSig(p){ var c=catById(p.categoryId); return [p.lat,p.lng,c.color,pla
 function popupIsOpen(){ try{ if(ui.engine==="osm") return !!(leafletMap&&leafletMap._popup&&leafletMap.hasLayer(leafletMap._popup));
   return !!(gInfo&&(gInfo.isOpen||gInfoPid)); }catch(e){ return false; } }
 /* Saved Google place-photo links are billed each time they load. */
-function photoOk(url){ return !!url&&(CONFIG.googleMapsEnabled||!/maps\.googleapis\.com/i.test(url)); }
+function photoOk(url){ return !!url&&(CONFIG.googlePlacesEnabled||!/maps\.googleapis\.com/i.test(url)); }
 function placeIcon(p){ return p.icon||GENRE_ICONS[p.genre]||catById(p.categoryId).emoji; }
 function esc(s){ return (s==null?"":""+s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
 function haversine(a,b){ if(!a||!b) return null; var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
@@ -1505,7 +1511,7 @@ function makePopupNode(p,opts){ opts=opts||{}; var c=catById(p.categoryId);
       (p.notes?'<p class="pop-notes">'+esc(p.notes)+'</p>':"")+
       ((p.tags&&p.tags.length)?'<p style="font-size:12px;color:var(--muted);margin:4px 0">🏷 '+p.tags.map(esc).join(" · ")+"</p>":""));
   var hrExp=node.querySelector('.hr-exp'); if(hrExp){hrExp.onclick=function(){var g=this.parentNode.nextElementSibling;var o=g.style.display!=='none';g.style.display=o?'none':'';this.textContent=o?'▾ Hours':'▴ Hide';}; }
-  if(CONFIG.googleMapsEnabled&&ui.engine==="google"&&placesService&&p.placeId){
+  if(CONFIG.googlePlacesEnabled&&ui.engine==="google"&&placesService&&p.placeId){
     placesService.getDetails({placeId:p.placeId,fields:["photos"]},function(d,gst){
       if(gst!==google.maps.places.PlacesServiceStatus.OK||!d||!d.photos||!d.photos.length) return;
       try{ var url=d.photos[0].getUrl({maxWidth:480,maxHeight:320}); if(!url||url===p.photoUrl) return;
@@ -1579,6 +1585,8 @@ function updateLeafletLabelVisibility(){
 }
 /* ===================== Leaflet engine ===================== */
 var leafletMap=null, leafletLayer=null, leafletRef=null, leafletMe=null, leafletClickTimer=null;
+function viewBox(){ if(ui.engine==="google"&&googleMap&&googleMap.getBounds()){ var gb=googleMap.getBounds(), sw=gb.getSouthWest(), ne=gb.getNorthEast(); return {w:sw.lng(),s:sw.lat(),e:ne.lng(),n:ne.lat()}; }
+  if(leafletMap){ var lb=leafletMap.getBounds(); return {w:lb.getWest(),s:lb.getSouth(),e:lb.getEast(),n:lb.getNorth()}; } return null; }
 var LeafletEngine={
   ready:function(cb){ if(window.L) cb(); else setTimeout(function(){LeafletEngine.ready(cb);},150); },
   init:function(el){ leafletMap=L.map(el,{zoomControl:true,attributionControl:false,markerZoomAnimation:false}).setView([DEF.lat,DEF.lng],DEF.z);
@@ -1635,7 +1643,7 @@ var LeafletEngine={
       .then(function(r){return r.json();}).then(function(a){ if(a&&a[0]) cb({lat:+a[0].lat,lng:+a[0].lon}); else cb(null); }).catch(function(){ cb(null); }); },
   suggest:function(q,cb){ var lang=appSettings.lang&&appSettings.lang!=="native"?("&accept-language="+appSettings.lang):"";
     var url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=6"+lang+"&q="+encodeURIComponent(q);
-    try{ var b=leafletMap.getBounds(); url+="&viewbox="+b.getWest()+","+b.getNorth()+","+b.getEast()+","+b.getSouth()+"&bounded=0"; }catch(e){}
+    try{ var b=viewBox(); if(b) url+="&viewbox="+b.w+","+b.n+","+b.e+","+b.s+"&bounded=0"; }catch(e){}
     fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json();}).then(function(arr){ if(!arr){cb([]);return;}
       cb(arr.map(function(r){ var catId=autoCategory(r);
         var name=(r.namedetails&&r.namedetails.name)?r.namedetails.name:(r.display_name||"").split(",")[0];
@@ -1683,22 +1691,22 @@ function placeFromDetails(d,fallbackName,placeId){ var hours="",hbd=null,photo="
     rating:(typeof d.rating==="number")?d.rating:null,priceLevel:(typeof d.price_level==="number")?d.price_level:null,genre:genreFromTypes(d.types)}; }
 var gLabelsZooming=false;
 var GoogleEngine={
-  ready:function(cb){ if(window.google&&window.google.maps&&window.google.maps.places){ cb(); return; }
+  ready:function(cb){ if(window.google&&window.google.maps&&window.google.maps.Map&&(!CONFIG.googlePlacesEnabled||window.google.maps.places)){ cb(); return; }
     window.__wmReady=function(){ cb(); }; window.gm_authFailure=function(){ onGkeyRejected(); };
     if(gScriptStarted) return; gScriptStarted=true;
     var lang=(appSettings.lang&&appSettings.lang!=="native")?("&language="+appSettings.lang):"";
     var s=document.createElement("script");
-    s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(gkey)+"&libraries=places&callback=__wmReady&loading=async&v=weekly"+lang;
+    s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(gkey)+(CONFIG.googlePlacesEnabled?"&libraries=places":"")+"&callback=__wmReady&loading=async&v=weekly"+lang;
     s.async=true; s.defer=true; s.onerror=function(){ onGoogleLoadError(); }; document.head.appendChild(s); },
-  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,cameraControl:false,gestureHandling:"greedy",clickableIcons:true,
+  init:function(el){ googleMap=new google.maps.Map(el,{center:{lat:DEF.lat,lng:DEF.lng},zoom:DEF.z,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,cameraControl:false,gestureHandling:"greedy",clickableIcons:!!CONFIG.googlePlacesEnabled,
       zoomControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM},rotateControlOptions:{position:google.maps.ControlPosition.LEFT_BOTTOM}});
     gInfo=new google.maps.InfoWindow({maxWidth:284}); gInfoPid=null;
-    gInfo.addListener("closeclick",function(){ gInfoPid=null; }); gInfo.addListener("close",function(){ gInfoPid=null; }); acService=new google.maps.places.AutocompleteService();
-    placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder();
+    gInfo.addListener("closeclick",function(){ gInfoPid=null; }); gInfo.addListener("close",function(){ gInfoPid=null; }); if(CONFIG.googlePlacesEnabled){ acService=new google.maps.places.AutocompleteService();
+    placesService=new google.maps.places.PlacesService(googleMap); geocoder=new google.maps.Geocoder(); }
     googleMap.addListener("click",function(e){ if(ui.readOnly) return;
       if(e.placeId) e.stop();
       if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; return; }
-      var pid=e.placeId, lat=e.latLng.lat(), lng=e.latLng.lng();
+      var pid=CONFIG.googlePlacesEnabled?e.placeId:null, lat=e.latLng.lat(), lng=e.latLng.lng();
       gClickTimer=setTimeout(function(){ gClickTimer=null; if(pid) poiModal(pid,lat,lng); else pinNameModal(lat,lng); },300); });
     googleMap.addListener("dblclick",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
     googleMap.addListener("dragstart",function(){ if(gClickTimer){ clearTimeout(gClickTimer); gClickTimer=null; } });
@@ -1752,8 +1760,8 @@ var GoogleEngine={
   panTo:function(loc){ if(googleMap) googleMap.panTo({lat:loc.lat,lng:loc.lng}); },
   panToZoom:function(loc,z){ if(googleMap){ googleMap.panTo({lat:loc.lat,lng:loc.lng}); if(googleMap.getZoom()<z) googleMap.setZoom(z); } },
   resize:function(){},
-  geocode:function(addr,cb){ if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
-  suggest:function(q,cb){ if(!acService||!placesService){ cb([]); return; }
+  geocode:function(addr,cb){ if(!CONFIG.googlePlacesEnabled) return LeafletEngine.geocode(addr,cb); if(!geocoder){ cb(null); return; } geocoder.geocode({address:addr},function(res,st){ if(st==="OK"&&res&&res[0]){ var l=res[0].geometry.location; cb({lat:l.lat(),lng:l.lng()}); } else cb(null); }); },
+  suggest:function(q,cb){ if(!CONFIG.googlePlacesEnabled) return LeafletEngine.suggest(q,cb); if(!acService||!placesService){ cb([]); return; }
     function fromDetails(placeId,fallbackName){ return function(done){ placesService.getDetails({placeId:placeId,fields:GET_FIELDS},function(d,st){
       if(st!==google.maps.places.PlacesServiceStatus.OK||!d||!d.geometry){ done(null); return; } done(placeFromDetails(d,fallbackName,placeId)); }); }; }
     /* Autocomplete is tuned for "predictions as you type" and can rank or omit
@@ -2072,7 +2080,7 @@ function mapsModal(){ var mine=[],shared=[]; var dcfg=appSettings.drive||{}; var
     '<div class="seg" style="display:inline-flex;margin-bottom:6px">'+
     '<button class="btn tab'+(ui.engine==="google"?" active":"")+'" id="engGoogle">🟢 Google Maps</button>'+
     '<button class="btn tab'+(ui.engine==="osm"?" active":"")+'" id="engOSM">🗺️ OpenStreetMap</button></div>'+
-    '<p class="hint" style="margin-top:0">Google Maps gives better search, autocomplete, photos, and accurate hours.'+
+    '<p class="hint" style="margin-top:0">'+(CONFIG.googlePlacesEnabled?'Google Maps gives better search, autocomplete, photos, and accurate hours.':'Search uses free OpenStreetMap data with either style; Google place search and photos are turned off to avoid charges.')+
     ((gkeyBlocked||!CONFIG.apiKey)?' Having trouble connecting? <a href="#" id="ownKeyLink">Use your own Google Maps API key</a>.':"")+'</p>';
   openModal('<div class="mh"><div><h2>Your maps</h2><p>Switch between maps, or make a new one per city/trip.</p></div><button class="close">✕</button></div>'+
     '<div class="mb">'+connectSection+'<div class="maps-list">'+
@@ -2823,7 +2831,7 @@ function closeSidebarMobile(){ document.getElementById("aside").classList.remove
 
 /* ===================== init ===================== */
 function wireUI(){
-  if(!CONFIG.googleMapsEnabled){ var enb=document.querySelector('[data-act="enrich"]'); if(enb) enb.style.display="none"; }
+  if(!CONFIG.googlePlacesEnabled){ var enb=document.querySelector('[data-act="enrich"]'); if(enb) enb.style.display="none"; }
   var vt=document.getElementById("verTag"); if(vt) vt.textContent="Wandermark v"+WANDERMARK_VERSION;
   document.getElementById("gateConnect").onclick=authGateConnect;
   document.getElementById("gatePick").onclick=function(){ pickDriveFolder(function(id,name){ connectToFolder(id,name); hideAuthGate(); }); };

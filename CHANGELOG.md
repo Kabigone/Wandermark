@@ -10,6 +10,20 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.99] — Google base map back, Places still off
+
+### Changed
+- Split the cost switch in two: `CONFIG.googleMapsEnabled` (now `true`) brings the
+  Google base map back, and the new `CONFIG.googlePlacesEnabled` (`false`) keeps
+  every Places/Geocoding call off — the part that was actually billed.
+- With Places off on the Google map: the Maps script loads without the Places
+  library; place search and address lookup use OpenStreetMap Nominatim (biased to
+  the visible area of whichever map is showing); Google's own POIs aren't
+  tappable (tapping one would fetch billed details); saved Google photos stay
+  hidden; "Enrich from Google" stays hidden.
+
+---
+
 ## [0.9.98] — Switch to turn off billed Google Maps APIs
 
 ### Added
