@@ -3,10 +3,12 @@
   Map engine: OpenStreetMap (keyless) or Google Maps (built-in shared key, or
   bring your own).
 
-  VERSION: 0.9.99
+  VERSION: 0.9.100
   Full history is in CHANGELOG.md; how the code is organised is in README.md.
 
   Changelog (summary):
+    0.9.100 Paste a Google Maps link, coordinates or plus code into search to add
+           that exact spot (no Places API).
     0.9.99 Google base map back on; Places/Geocoding off via CONFIG.googlePlacesEnabled
            (search + address lookup use OpenStreetMap Nominatim on either map).
     0.9.98 CONFIG.googleMapsEnabled site-wide switch (off): no billed Google Maps
@@ -696,7 +698,7 @@
     <div class="brand"><span class="glyph">🧭</span><h1>Wandermark</h1></div>
     <button class="btn" id="mapBtn" title="Switch / manage maps">🗂️ Map ▾</button>
     <button class="btn" id="signinBadge" title="Sign in to see and edit shared maps" style="display:none;background:rgba(224,138,47,.18);border-color:#e08a2f;color:#9a5a14;font-weight:700">🔑 Sign in to Google</button>
-    <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search a place to add…" autocomplete="off" style="padding-right:36px"><button type="button" id="searchClear" aria-label="Clear search" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:6px 8px">✕</button><div class="results" id="results"></div></div>
+    <div class="search-wrap"><span class="si">🔎</span><input id="search" placeholder="Search, or paste a Google Maps link…" autocomplete="off" style="padding-right:36px"><button type="button" id="searchClear" aria-label="Clear search" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:6px 8px">✕</button><div class="results" id="results"></div></div>
     <div class="hbtns">
       <div class="menu" id="menu">
         <button class="btn" id="menuBtn">⋯</button>
@@ -808,7 +810,7 @@
 <script>
 (function(){
 "use strict";
-var WANDERMARK_VERSION="0.9.99";
+var WANDERMARK_VERSION="0.9.100";
 
 /* ============================================================================
    CONFIG — optional shared credentials so friends can just open the URL.
@@ -1903,7 +1905,62 @@ function showResultsMsg(m){ resultsEl.innerHTML='<div class="res note">'+esc(m)+
    useful. Use a lower minimum length for queries containing CJK so short
    kanji/kana place names (e.g. "永吉") aren't rejected before searching. */
 function isCJKQuery(q){ return /[぀-ヿ㐀-鿿豈-﫿]/.test(q); }
-var doSearch=debounce(function(q){ if(!q||q.length<(isCJKQuery(q)?1:3)){ hideResults(); return; } if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
+/* ---- Paste a location copied from Google Maps (no Places API): a full maps link with coordinates,
+   plain or degrees/minutes/seconds coordinates, or a plus code (full, or short + locality). ---- */
+var OLC_ALPHA="23456789CFGHJMPQRVWX";
+function olcDecode(code){ code=code.toUpperCase().replace("+","").replace(/0+$/,"");
+  if(code.length<2||code.length%2&&code.length<10) return null;
+  var lat=-90,lng=-180,latRes=20,lngRes=20,i;
+  for(i=0;i<Math.min(code.length,10);i+=2){ var a=OLC_ALPHA.indexOf(code.charAt(i)), b=OLC_ALPHA.indexOf(code.charAt(i+1)); if(a<0||b<0) return null;
+    latRes=lngRes=20/Math.pow(20,i/2); lat+=a*latRes; lng+=b*lngRes; }
+  for(i=10;i<code.length;i++){ var d=OLC_ALPHA.indexOf(code.charAt(i)); if(d<0) return null;
+    latRes/=5; lngRes/=4; lat+=Math.floor(d/4)*latRes; lng+=(d%4)*lngRes; }
+  return {lat:Math.min(90,lat+latRes/2),lng:lng+lngRes/2}; }
+function olcPrefix(lat,lng,n){ lat=Math.max(-90,Math.min(89.9999999,lat))+90; lng=((lng+180)%360+360)%360; var out="";
+  for(var i=0;i<n;i+=2){ var r=20/Math.pow(20,i/2), a=Math.min(19,Math.floor(lat/r)), b=Math.min(19,Math.floor(lng/r));
+    out+=OLC_ALPHA.charAt(a)+OLC_ALPHA.charAt(b); lat-=a*r; lng-=b*r; } return out; }
+/* Short codes ("MP5V+5W") drop leading digits; fill them in from a nearby reference point. */
+function olcRecover(shortCode,refLat,refLng){ var pad=8-shortCode.indexOf("+"); if(pad<=0) return olcDecode(shortCode);
+  var res=Math.pow(20,2-pad/2), half=res/2, c=olcDecode(olcPrefix(refLat,refLng,pad)+shortCode); if(!c) return null;
+  if(c.lat-refLat>half&&c.lat-res>=-90) c.lat-=res; else if(refLat-c.lat>half&&c.lat+res<=90) c.lat+=res;
+  if(c.lng-refLng>half) c.lng-=res; else if(refLng-c.lng>half) c.lng+=res; return c; }
+function validLatLng(lat,lng){ return isFinite(lat)&&isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&!(lat===0&&lng===0); }
+function parsePastedLocation(text){ var t=String(text||"").trim(), m, A="[23456789CFGHJMPQRVWX]";
+  var um=t.match(/https?:\/\/\S+/i), url=um?um[0]:"", rest=um?t.replace(url," ").replace(/\s+/g," ").trim():t;
+  if(url){ var u=url, name="";
+    try{ u=decodeURIComponent(url); }catch(e){}
+    var nm=u.match(/\/maps\/place\/([^\/@?]+)/); if(nm) name=nm[1].replace(/\+/g," ").trim();
+    if((m=u.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))||(m=u.match(/[?&](?:q|query|ll|center|destination|daddr)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/))||(m=u.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))){
+      var la=+m[1], ln=+m[2]; if(validLatLng(la,ln)) return {kind:"exact",lat:la,lng:ln,name:name||rest.split(/\n| · /)[0]||"",url:url,source:"Google Maps link"}; }
+    if(/goo\.gl|maps\.app|google\.[a-z.]+\/maps/i.test(url)) return {kind:"shortlink",url:url,text:rest}; }
+  if((m=t.match(/(\d{1,2})°\s*(\d{1,2})['′]\s*([\d.]+)["″]?\s*([NS])[\s,]+(\d{1,3})°\s*(\d{1,2})['′]\s*([\d.]+)["″]?\s*([EW])/i))){
+    var dl=(+m[1]+m[2]/60+m[3]/3600)*(/s/i.test(m[4])?-1:1), dg=(+m[5]+m[6]/60+m[7]/3600)*(/w/i.test(m[8])?-1:1);
+    if(validLatLng(dl,dg)) return {kind:"exact",lat:dl,lng:dg,name:"",url:"",source:"Coordinates"}; }
+  if((m=t.match(/^\s*\(?\s*(-?\d{1,2}\.\d{3,})\s*[, ]\s*(-?\d{1,3}\.\d{3,})\s*\)?\s*$/))){ if(validLatLng(+m[1],+m[2])) return {kind:"exact",lat:+m[1],lng:+m[2],name:"",url:"",source:"Coordinates"}; }
+  if((m=t.match(new RegExp("(^|\\s)("+A+"{8}\\+"+A+"{0,3})(?=[\\s,]|$)","i")))){ var full=olcDecode(m[2]); if(full) return {kind:"exact",lat:full.lat,lng:full.lng,name:"",url:"",source:"Plus code "+m[2].toUpperCase()}; }
+  if((m=t.match(new RegExp("(^|\\s)((?:"+A+"{2}){1,3}\\+"+A+"{2,3})(?=[\\s,]|$)","i")))){
+    return {kind:"plusshort",code:m[2].toUpperCase(),locality:t.slice(t.indexOf(m[2])+m[2].length).replace(/^[\s,]+/,"").trim()}; }
+  return null; }
+function resolvePasted(pl,cb){
+  if(pl.kind==="exact"){ cb(pl); return; }
+  if(pl.kind==="plusshort"){ var c=ui.mapReady?Engine.getCenter():{lat:DEF.lat,lng:DEF.lng};
+    var fromRef=function(ref,where){ var r=olcRecover(pl.code,ref.lat,ref.lng); cb(r?{lat:r.lat,lng:r.lng,name:"",url:"",source:"Plus code "+pl.code+(where?" "+where:"")}:null,
+      "That plus code didn’t decode — copy the full code from Google Maps (e.g. 8Q7XMP5V+5W)."); };
+    if(pl.locality) LeafletEngine.geocode(pl.locality,function(r){ fromRef(r||c,r?pl.locality:""); }); else fromRef(c,"");
+    return; }
+  if(pl.kind==="shortlink"){ var help="Google’s short share links can’t be opened from here. In Google Maps, tap the place’s plus code (looks like MP5V+5W) to copy it, or long-press the spot to copy its coordinates, and paste that instead.";
+    if(!pl.text){ cb(null,help); return; }
+    LeafletEngine.geocode(pl.text,function(r){ if(!r){ cb(null,help); return; }
+      cb({lat:r.lat,lng:r.lng,name:pl.text.split(/\n| · |, /)[0],url:pl.url,source:"Address from the share text",approx:true}); }); } }
+function showPastedResult(r){ resultsEl.innerHTML=""; resultsEl.classList.add("on");
+  var d=document.createElement("div"); d.className="res";
+  d.innerHTML='<span class="rt">📍</span><div style="flex:1;min-width:0"><div class="rn">'+esc(r.name||"Add this spot")+'</div><div class="ra">'+esc(r.source+" · "+r.lat.toFixed(5)+", "+r.lng.toFixed(5)+(r.approx?" · approximate, check the pin":""))+'</div></div><span class="badge">＋ Add</span>';
+  d.onclick=function(){ document.getElementById("search").value=""; hideResults();
+    if(ui.mapReady) Engine.setView({lat:r.lat,lng:r.lng,z:17}); pinNameModal(r.lat,r.lng,{name:r.name,googleUrl:r.url}); };
+  resultsEl.appendChild(d); }
+var doSearch=debounce(function(q){ if(!q||q.length<(isCJKQuery(q)?1:3)){ hideResults(); return; }
+  var pl=parsePastedLocation(q); if(pl){ showResultsMsg("Reading location…"); resolvePasted(pl,function(r,msg){ if(r) showPastedResult(r); else showResultsMsg(msg); }); return; }
+  if(!ui.mapReady){ showResultsMsg("Map still loading…"); return; }
   showResultsMsg("Searching…");
   Engine.suggest(q,function(items){ if(items===null){ showResultsMsg("Search is offline here. Click the map to drop a pin by hand."); return; }
     if(!items.length){ showResultsMsg("No matches near here. Try a broader term, or pan the map closer."); return; }
@@ -2024,13 +2081,13 @@ function poiModal(placeId,lat,lng){ if(ui.readOnly) return;
     gInfo.setContent(makePopupNode(place,{add:true}));
     gInfo.setPosition({lat:lat,lng:lng});
     gInfo.open(googleMap); }); }
-function pinNameModal(lat,lng){ if(ui.readOnly||scrim.classList.contains("on")) return;
+function pinNameModal(lat,lng,opts){ opts=opts||{}; if(ui.readOnly||scrim.classList.contains("on")) return;
   openModal('<div class="mh"><div><h2>Drop a pin</h2><p>'+lat.toFixed(4)+", "+lng.toFixed(4)+'</p></div><button class="close">✕</button></div>'+
-    '<div class="mb"><div class="field"><label>Name</label><input id="pinName" placeholder="What’s here?"></div>'+
+    '<div class="mb"><div class="field"><label>Name</label><input id="pinName" placeholder="What’s here?" value="'+esc(opts.name||"")+'"></div>'+
     '<div class="field"><label>Category</label><select id="pinCat">'+state.categories.map(function(k){ var kk=catById(k.id); return '<option value="'+k.id+'">'+kk.emoji+" "+esc(kk.name)+"</option>";}).join("")+"</select></div>"+
     '<button class="pillbtn" id="pinAdd">＋ Add pin</button></div>');
   modal.querySelector(".close").onclick=closeModal; var inp=modal.querySelector("#pinName"); inp.focus();
-  function go(){ addPlace({name:inp.value.trim()||"Pinned spot",lat:lat,lng:lng,categoryId:modal.querySelector("#pinCat").value}); closeModal(); }
+  function go(){ addPlace({name:inp.value.trim()||"Pinned spot",lat:lat,lng:lng,categoryId:modal.querySelector("#pinCat").value,googleUrl:opts.googleUrl||""}); closeModal(); }
   modal.querySelector("#pinAdd").onclick=go; inp.addEventListener("keydown",function(e){ if(e.key==="Enter") go(); }); }
 function requestGeo(){ var sel=document.getElementById("anchorSel");
   if(!navigator.geolocation){ toast("Location isn’t available in this browser"); sel.value=""; return; }

@@ -10,6 +10,27 @@ top of the `<script>` in `wandermark.html`, and it's shown at the bottom of the
 
 ---
 
+## [0.9.100] — Paste a location from Google Maps
+
+### Added
+- The search bar accepts things copied from Google Maps, so you can add exact
+  spots that OpenStreetMap search doesn't know — all decoded in the app, with no
+  Places API calls:
+  - a full Google Maps link (uses the place's own pin coordinates and its name);
+  - coordinates, decimal (`35.6613, 139.7006`) or degrees/minutes/seconds
+    (`35°39'40.7"N 139°42'02.2"E`);
+  - a plus code, full (`8Q7XMP62+X6`) or short with a locality
+    (`MP62+X6 Shibuya, Tokyo`, resolved against that locality, or the visible
+    map area if none is given).
+  A "📍 … ＋ Add" result opens the Drop-a-pin dialog with the name filled in;
+  pasted links are saved so "Open in Google Maps" goes to that exact listing.
+- Google's short share links (`maps.app.goo.gl/…`) can't be opened from a
+  browser page; if the share text includes a name/address it's looked up
+  approximately, otherwise the result explains how to copy the plus code or
+  coordinates instead.
+
+---
+
 ## [0.9.99] — Google base map back, Places still off
 
 ### Changed
